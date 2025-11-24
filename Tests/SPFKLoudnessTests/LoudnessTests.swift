@@ -20,23 +20,6 @@ final class LoudnessTests: BinTestCase {
         #expect(loudness.truePeak == -0.1)
     }
 
-    @Test func testLoopAudio() async throws {
-        let url = TestBundleResources.shared.cowbell_wav
-        let audioFile1 = try AVAudioFile(forReading: url)
-
-        // original file duration
-        #expect(audioFile1.duration == 2.0000226757369615)
-
-        let output = bin.appendingPathComponent("cowbell_20.wav", conformingTo: .wav)
-
-        // loop it for 20 seconds
-        let tmpfile = try await AudioTools.createLoopedAudio(input: url, output: output, minimumDuration: 20)
-
-        let audioFile2 = try AVAudioFile(forReading: tmpfile)
-
-        #expect(audioFile2.duration.isApproximatelyEqual(to: 20, absoluteTolerance: 0.001))
-    }
-
     @Test func testMeasureLoudnessShortFile() async throws {
         let url = TestBundleResources.shared.cowbell_wav
 

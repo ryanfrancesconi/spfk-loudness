@@ -1,6 +1,7 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/SPFKLoudness
 
 import Foundation
+import SPFKAudioBase
 import SPFKBase
 import SPFKLoudnessC
 
