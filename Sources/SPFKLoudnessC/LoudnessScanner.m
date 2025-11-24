@@ -1,3 +1,5 @@
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/SPFKLoudness
+
 // A simple object wrapper on top of the r128x wrapper for libebur128
 
 #import "ExtAudioProcessor.h"

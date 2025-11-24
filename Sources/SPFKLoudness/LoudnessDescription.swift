@@ -1,9 +1,9 @@
-// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/SPFKMetadata
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/SPFKLoudness
 
 import Foundation
 import SPFKUtils
 
-public struct LoudnessDescription: Comparable, Hashable, Codable {
+public struct LoudnessDescription: Comparable, Hashable, Codable, Sendable {
     public static func < (lhs: LoudnessDescription, rhs: LoudnessDescription) -> Bool {
         guard let lhs = lhs.lufs,
               let rhs = rhs.lufs else { return false }
