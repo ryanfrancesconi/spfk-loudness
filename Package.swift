@@ -7,7 +7,7 @@ private let name: String = "SPFKLoudness" // Swift target
 private let dependencyNames: [String] = ["SPFKBase", "SPFKAudioBase", "SPFKUtils", "SPFKTesting"]
 private let dependencyNamesC: [String] = []
 private let dependencyBranch: String = "development"
-private let useLocalDependencies: Bool = false
+
 private let platforms: [PackageDescription.SupportedPlatform]? = [
     .macOS(.v12)
 ]
@@ -22,18 +22,8 @@ private let products: [PackageDescription.Product] = [
     .library(name: name, targets: [name, nameC])
 ]
 
-private var packageDependencies: [PackageDescription.Package.Dependency] {
-    let local: [PackageDescription.Package.Dependency] =
-        dependencyNames.map {
-            .package(name: "\($0)", path: "../\($0)")
-        }
-
-    let remote: [PackageDescription.Package.Dependency] =
-        dependencyNames.map {
-            .package(url: "\(githubBase)/\($0)", branch: dependencyBranch)
-        }
-
-    return useLocalDependencies ? local : remote
+private let packageDependencies: [PackageDescription.Package.Dependency] = dependencyNames.map {
+    .package(url: "\(githubBase)/\($0)", branch: dependencyBranch)
 }
 
 private var swiftTargetDependencies: [PackageDescription.Target.Dependency] {
