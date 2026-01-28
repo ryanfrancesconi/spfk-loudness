@@ -1,28 +1,33 @@
 // Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-loudness
 
 import Foundation
+import SPFKBase
+import SPFKLoudnessC
 import SPFKUtils
+import SPFKAudioBase
 
 public struct LoudnessDescription: Comparable, Hashable, Codable, Sendable {
     public static func < (lhs: LoudnessDescription, rhs: LoudnessDescription) -> Bool {
-        guard let lhs = lhs.lufs,
-              let rhs = rhs.lufs else { return false }
+        guard let lhs = lhs.loudnessValue,
+              let rhs = rhs.loudnessValue else { return false }
 
         return lhs < rhs
     }
 
-    public var lufs: Double?
+    public var loudnessValue: Double?
     public var loudnessRange: Double?
-    public var truePeak: Float?
+    public var maxTruePeakLevel: Float?
+    public var maxMomentaryLoudness: Double?
+    public var maxShortTermLoudness: Double?
 
     /// A summary suitable for displaying in a UI
     public var stringValue: String {
         var out = ""
 
-        let lufsString = lufs?.string(decimalPlaces: 1) ?? "N/A"
+        let lufsString = loudnessValue?.string(decimalPlaces: 1) ?? "N/A"
         out += "\(lufsString) LUFS, "
 
-        let truePeakString = truePeak?.string(decimalPlaces: 1) ?? "N/A"
+        let truePeakString = maxTruePeakLevel?.string(decimalPlaces: 1) ?? "N/A"
         out += "\(truePeakString) dBTP, "
 
         let loudnessRangeValue: Double? = loudnessRange == 0 ? nil : loudnessRange
@@ -32,10 +37,43 @@ public struct LoudnessDescription: Comparable, Hashable, Codable, Sendable {
         return out
     }
 
-    public init(lufs: Double? = nil, loudnessRange: Double? = nil, truePeak: Float? = nil) {
-        self.lufs = lufs
+    public init(
+        loudnessValue: Double? = nil,
+        loudnessRange: Double? = nil,
+        maxTruePeakLevel: Float? = nil,
+        maxMomentaryLoudness: Double? = nil,
+        maxShortTermLoudness: Double? = nil
+    ) {
+        self.loudnessValue = loudnessValue
         self.loudnessRange = loudnessRange
-        self.truePeak = truePeak
+        self.maxTruePeakLevel = maxTruePeakLevel
+        self.maxMomentaryLoudness = maxMomentaryLoudness
+        self.maxShortTermLoudness = maxShortTermLoudness
+    }
+
+    public init(url: URL) async throws {
+        let tmpfile: URL? = try? await AudioTools.createLoopedAudio(input: url, minimumDuration: 5)
+
+        defer {
+            if let tmpfile, tmpfile.exists {
+                try? tmpfile.delete()
+                Log.debug("Removed tmpfile at", tmpfile.path)
+            }
+        }
+
+        let url = tmpfile ?? url
+
+        guard let scanner = LoudnessScanner(path: url.path) else {
+            throw NSError(description: "Failed to analyze '\(url.lastPathComponent)'")
+        }
+
+        self = LoudnessDescription(
+            loudnessValue: scanner.loudnessValue.isFinite ? scanner.loudnessValue : nil,
+            loudnessRange: scanner.loudnessRange.isFinite ? scanner.loudnessRange : nil,
+            maxTruePeakLevel: scanner.maxTruePeakLevel.isFinite ? scanner.maxTruePeakLevel : nil,
+            maxMomentaryLoudness: scanner.maxMomentaryLoudness.isFinite ? scanner.maxMomentaryLoudness : nil,
+            maxShortTermLoudness: scanner.maxShortTermLoudness.isFinite ? scanner.maxShortTermLoudness : nil
+        )
     }
 }
 
@@ -47,22 +85,22 @@ extension LoudnessDescription {
             return out
         }
 
-        let lufs = array.compactMap { $0.lufs }.filter { !$0.isInfinite }
+        let lufs = array.compactMap(\.loudnessValue).filter { !$0.isInfinite }
 
         if lufs.count > 0 {
-            out.lufs = lufs.reduce(0, +) / Double(lufs.count)
+            out.loudnessValue = lufs.reduce(0, +) / Double(lufs.count)
         }
 
-        let loudnessRange = array.compactMap { $0.loudnessRange }
+        let loudnessRange = array.compactMap(\.loudnessRange)
 
         if loudnessRange.count > 0 {
             out.loudnessRange = loudnessRange.reduce(0, +) / Double(loudnessRange.count)
         }
 
-        let truePeak = array.compactMap { $0.truePeak }
+        let truePeak = array.compactMap(\.maxTruePeakLevel)
 
         if truePeak.count > 0 {
-            out.truePeak = truePeak.reduce(0, +) / Float(truePeak.count)
+            out.maxTruePeakLevel = truePeak.reduce(0, +) / Float(truePeak.count)
         }
 
         return out

@@ -11,21 +11,23 @@ final class LoudnessTests: BinTestCase {
     @Test func testMeasureLoudness() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
-        let loudness = try await Loudness.analyze(url: url)
+        let loudness = try await LoudnessDescription(url: url)
 
         let range = try #require(loudness.loudnessRange)
 
-        #expect(loudness.lufs == -24.1)
-        #expect(range == 1.4275153988048004)
-        #expect(loudness.truePeak == -0.1)
+        #expect(loudness.loudnessValue == -24.13)
+        #expect(range == 1.43)
+        #expect(loudness.maxTruePeakLevel == -0.07)
+        #expect(loudness.maxMomentaryLoudness == -19.51)
+        #expect(loudness.maxShortTermLoudness == -22.99)
     }
 
     @Test func testMeasureLoudnessShortFile() async throws {
         let url = TestBundleResources.shared.cowbell_wav
 
-        let loudness = try await Loudness.analyze(url: url)
+        let loudness = try await LoudnessDescription(url: url)
 
-        #expect(loudness.lufs == -29.5)
+        #expect(loudness.loudnessValue == -29.5)
     }
 
     @Test func testAverageLoudness() async throws {
@@ -36,14 +38,14 @@ final class LoudnessTests: BinTestCase {
         var values = [LoudnessDescription]()
 
         for url in urls {
-            guard let value = try? await Loudness.analyze(url: url) else { continue }
+            guard let value = try? await LoudnessDescription(url: url) else { continue }
 
             values.append(value)
 
-            Log.debug("Change to target is", targetLevel - (value.lufs ?? 0))
+            Log.debug("Change to target is", targetLevel - (value.loudnessValue ?? 0))
         }
 
-        let lufs = try #require(LoudnessDescription.averageLoudness(from: values).lufs)
+        let lufs = try #require(LoudnessDescription.averageLoudness(from: values).loudnessValue)
 
         Log.debug("🔊 values:", values)
         Log.debug("🔊 average:", lufs)

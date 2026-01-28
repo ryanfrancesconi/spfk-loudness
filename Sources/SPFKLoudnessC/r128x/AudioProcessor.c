@@ -1,30 +1,17 @@
-// ExtAudioProcessor.c
-// This file is part of r128x.
-//
-// r128x is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// r128x is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with r128x.  If not, see <http://www.gnu.org/licenses/>.
-// copyright Manuel Naudin 2012-2013
+// Based on r128x by Manuel Naudin 2012-2013
 
 #define DEFAULT_BUFFER_SIZE 192000
 
 #include <math.h>
-#include "ExtAudioProcessor.h"
+#include "AudioProcessor.h"
 
-OSStatus ExtAudioConvCallback(AudioConverterRef            inAudioConverter,
-                              UInt32                       *ioNumberDataPackets,
-                              AudioBufferList              *ioData,
-                              AudioStreamPacketDescription **outDataPacketDescription,
-                              void                         *inUserData) {
+// MARK: - Callback
+
+OSStatus eburAudioConvCallback(AudioConverterRef            inAudioConverter,
+                               UInt32                       *ioNumberDataPackets,
+                               AudioBufferList              *ioData,
+                               AudioStreamPacketDescription **outDataPacketDescription,
+                               void                         *inUserData) {
     OSStatus err = noErr;
 
     //setting ExtAudioFile out AudioBufferList
@@ -41,7 +28,7 @@ OSStatus ExtAudioConvCallback(AudioConverterRef            inAudioConverter,
         return err;
     }
 
-    ExtAudioData *userData = (ExtAudioData *)inUserData;
+    LoudnessData *userData = (LoudnessData *)inUserData;
     Float32 *fileOutBuffer = userData->mFileOutBuffer;
     AudioBufferList fileOutBufferList;
     fileOutBufferList.mNumberBuffers = 1;
@@ -64,20 +51,35 @@ OSStatus ExtAudioConvCallback(AudioConverterRef            inAudioConverter,
     UInt32 framesInBuffer = framesInFileOutBuffer;
     UInt32 pushedFrames = 0;
     Float32 *offset;
-    double mom;
 
     while (framesInBuffer >= userData->mNeededFrames) {
         offset = (fileOutBuffer + (pushedFrames * converterInASBD.mChannelsPerFrame));
+
         ebur128_add_frames_float(userData->mState,
                                  offset,
                                  (size_t)userData->mNeededFrames);
-        ebur128_loudness_momentary(userData->mState, &mom);
-        CFNumberRef cmom = CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &mom);
-        CFArrayAppendValue(userData->mBlocks, cmom);
+
+        double momentaryValue;
+        ebur128_loudness_momentary(userData->mState, &momentaryValue);
+
+        if (!isinf(momentaryValue) && momentaryValue <= 0) {
+            CFNumberRef cmom = CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &momentaryValue);
+            CFArrayAppendValue(userData->momentaryBlocks, cmom);
+            CFRelease(cmom);
+        }
+
+        double shortTermValue;
+        ebur128_loudness_shortterm(userData->mState, &shortTermValue);
+
+        if (!isinf(shortTermValue) && shortTermValue <= 0) {
+            CFNumberRef cst = CFNumberCreate(kCFAllocatorDefault, kCFNumberDoubleType, &shortTermValue);
+            CFArrayAppendValue(userData->shortTermBlocks, cst);
+            CFRelease(cst);
+        }
+
         framesInBuffer -= userData->mNeededFrames;
         pushedFrames += userData->mNeededFrames;
         userData->mNeededFrames = userData->mReportIntervalFrames;
-        CFRelease(cmom);
     }
 
     if (framesInBuffer > 0) {
@@ -88,22 +90,23 @@ OSStatus ExtAudioConvCallback(AudioConverterRef            inAudioConverter,
         userData->mNeededFrames -= framesInBuffer;
     }
 
-    /*
-       // TODO: add delegate
-       // RF: progress - can support this later but not through notification center
-       float progress = 100.0 * userData->mFileFramesRead / userData->fileLengthInFrames;
-     */
-
     ioNumberDataPackets = &framesInFileOutBuffer;
     ioData->mBuffers[0].mData = fileOutBuffer;
     ioData->mBuffers[0].mDataByteSize = framesInFileOutBuffer * converterInASBD.mBytesPerFrame;
     return err;
 }
 
-OSStatus ExtAudioReader(CFStringRef audioFilePath,
-                        double      *il_p,
-                        double      *lra_p,
-                        Float32     *maxtp_p) {
+// MARK: - Reader
+
+OSStatus eburAudioReader(
+    CFStringRef audioFilePath,
+    double      *loudnessValue,
+    double      *loudnessRange,
+    Float32     *maxTruePeakLevel,
+    double      *maxMomentaryLoudness,
+    double      *maxShortTermLoudness
+    ) {
+    //
     OSStatus err = noErr;
     CFURLRef myFileRef = CFURLCreateWithFileSystemPath(kCFAllocatorDefault,
                                                        audioFilePath,
@@ -119,7 +122,7 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
 
     CFRelease(myFileRef);
 
-    //getting input file asbd
+    // getting input file asbd
     AudioStreamBasicDescription inFileASBD;
     UInt32 propSize = sizeof(inFileASBD);
 
@@ -132,13 +135,12 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
         return err;
     }
 
-    //setting ExtAudioFile client format
+    // setting ExtAudioFile client format
     AudioStreamBasicDescription clientASBD;
     clientASBD.mChannelsPerFrame = inFileASBD.mChannelsPerFrame;
     clientASBD.mSampleRate = inFileASBD.mSampleRate;
     clientASBD.mFormatID = kAudioFormatLinearPCM;
-    clientASBD.mFormatFlags =
-        kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+    clientASBD.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
     clientASBD.mBitsPerChannel = 32;
     clientASBD.mFramesPerPacket = 1;
     clientASBD.mBytesPerFrame = 4 * clientASBD.mChannelsPerFrame;
@@ -212,13 +214,17 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
     }
 
     //setting userData
-    ExtAudioData userData = {
+    LoudnessData userData = {
         0
     };
+
     userData.mAudioFileRef = &audioFileRef;
-    ebur128_state *state = ebur128_init(clientASBD.mChannelsPerFrame,
-                                        clientASBD.mSampleRate,
-                                        EBUR128_MODE_I | EBUR128_MODE_LRA);
+
+    ebur128_state *state = ebur128_init(
+        clientASBD.mChannelsPerFrame,
+        clientASBD.mSampleRate,
+        EBUR128_MODE_I | EBUR128_MODE_LRA
+        );
 
     if (state == NULL) {
         return 1;
@@ -230,6 +236,7 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
     userData.mFramesProduced = 0;
     userData.mReportIntervalFrames = clientASBD.mSampleRate / 10;
     userData.mNeededFrames = userData.mReportIntervalFrames;
+
     UInt32 size = sizeof(SInt64);
 
     err = ExtAudioFileGetProperty(audioFileRef, kExtAudioFileProperty_FileLengthFrames, &size, &(userData.fileLengthInFrames));
@@ -240,22 +247,30 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
 
     Float32 maxTP = 0;
 
-    userData.mBlocks = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    userData.momentaryBlocks = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
+    userData.shortTermBlocks = CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
 
-    if (userData.mBlocks == NULL) {
+    if (userData.momentaryBlocks == NULL || userData.shortTermBlocks == NULL) {
         return -1;
     }
 
     //calling AudioConverterFillComplexBuffer
     UInt32 framesToRead;
+
     do {
         framesToRead = framesInConverterOutBuffer;
+
         err = AudioConverterFillComplexBuffer(converterRef,
-                                              ExtAudioConvCallback,
+                                              eburAudioConvCallback,
                                               &userData,
                                               &framesToRead,
                                               &converterOutBufferList,
                                               nil);
+
+        if (err != noErr && err != 'insz') {
+            return err;
+        }
+
         Float32 *samples = (Float32 *)converterOutBufferList.mBuffers[0].mData;
         UInt32 nChannels = converterOutBufferList.mBuffers[0].mNumberChannels;
         userData.mFramesProduced += framesToRead;
@@ -267,24 +282,26 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
                 }
             }
         }
-
-        if (err != noErr && err != 'insz') {
-            return err;
-        }
     } while (framesToRead > 0 && (userData.mFileFramesRead < userData.fileLengthInFrames));
 
     double il, lra;
+
+    *maxMomentaryLoudness = maxValue(userData.momentaryBlocks);
+    *maxShortTermLoudness = maxValue(userData.shortTermBlocks);
+
     ebur128_loudness_global(userData.mState, &il);
-    il = rint(10 * il) / 10;
-    *il_p = il;
+    il = rint(100 * il) / 100;
+    *loudnessValue = il;
 
     ebur128_loudness_range(userData.mState, &lra);
-    *lra_p = lra;
-    lra = rint(10 * lra) / 10;
-    maxTP = rintf(10 * 20 * log10(maxTP)) / 10;
-    *maxtp_p = maxTP;
+    lra = rint(100 * lra) / 100;
+    *loudnessRange = lra;
 
-    CFRelease(userData.mBlocks);
+    maxTP = rintf(100 * 20 * log10(maxTP)) / 100;
+    *maxTruePeakLevel = maxTP;
+
+    CFRelease(userData.momentaryBlocks);
+    CFRelease(userData.shortTermBlocks);
     free(fileOutBuffer);
     ebur128_destroy(&state);
     free(converterOutBuffer);
@@ -296,4 +313,26 @@ OSStatus ExtAudioReader(CFStringRef audioFilePath,
     }
 
     return err;
+}
+
+double maxValue(CFMutableArrayRef blocks) {
+    // CFShow(blocks);
+
+    double highest = -100;
+    CFIndex count = CFArrayGetCount(blocks);
+
+    for (CFIndex i = 0; i < count; ++i) {
+        CFNumberRef cfValue = (CFNumberRef)CFArrayGetValueAtIndex(blocks, i);
+
+        double value;
+        CFNumberGetValue(cfValue, kCFNumberDoubleType, &value);
+
+        if (value > highest) {
+            highest = value;
+        }
+    }
+
+    highest = rint(100 * highest) / 100;
+
+    return highest;
 }
