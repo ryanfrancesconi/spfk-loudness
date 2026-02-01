@@ -11,7 +11,7 @@ final class LoudnessTests: BinTestCase {
     @Test func testMeasureLoudness() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
-        let loudness = try await LoudnessDescription(url: url)
+        let loudness = try await LoudnessDescription(parsing: url)
 
         let range = try #require(loudness.loudnessRange)
 
@@ -25,7 +25,7 @@ final class LoudnessTests: BinTestCase {
     @Test func testMeasureLoudnessShortFile() async throws {
         let url = TestBundleResources.shared.cowbell_wav
 
-        let loudness = try await LoudnessDescription(url: url)
+        let loudness = try await LoudnessDescription(parsing: url)
 
         #expect(loudness.loudnessValue == -29.5)
     }
@@ -38,7 +38,7 @@ final class LoudnessTests: BinTestCase {
         var values = [LoudnessDescription]()
 
         for url in urls {
-            guard let value = try? await LoudnessDescription(url: url) else { continue }
+            guard let value = try? await LoudnessDescription(parsing: url) else { continue }
 
             values.append(value)
 
