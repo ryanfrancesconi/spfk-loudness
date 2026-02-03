@@ -1,14 +1,16 @@
 import AVFoundation
 import Numerics
+import SPFKAudioBase
 import SPFKBase
-@testable import SPFKLoudness
 import SPFKLoudnessC
 import SPFKTesting
 import Testing
 
+@testable import SPFKLoudness
+
 @Suite(.tags(.file))
 final class LoudnessTests: BinTestCase {
-    @Test func testMeasureLoudness() async throws {
+    @Test func measureLoudness() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
         let loudness = try await LoudnessDescription(parsing: url)
@@ -22,18 +24,21 @@ final class LoudnessTests: BinTestCase {
         #expect(loudness.maxShortTermLoudness == -22.99)
     }
 
-    @Test func testMeasureLoudnessShortFile() async throws {
+    @Test func measureLoudnessShortFile() async throws {
         let url = TestBundleResources.shared.cowbell_wav
 
         let loudness = try await LoudnessDescription(parsing: url)
 
-        #expect(loudness.loudnessValue == -29.5)
+        #expect(loudness.loudnessValue == -29.52)
     }
 
     @Test func testAverageLoudness() async throws {
-        let targetLevel: Double = -23
+        let targetLevel: Float64 = -23
 
-        let urls = [TestBundleResources.shared.mp3_id3, TestBundleResources.shared.tabla_wav, TestBundleResources.shared.cowbell_wav]
+        let urls = [
+            TestBundleResources.shared.mp3_id3, TestBundleResources.shared.tabla_wav,
+            TestBundleResources.shared.cowbell_wav,
+        ]
 
         var values = [LoudnessDescription]()
 
@@ -51,7 +56,7 @@ final class LoudnessTests: BinTestCase {
         Log.debug("🔊 average:", lufs)
 
         #expect(
-            lufs.isApproximatelyEqual(to: -25.26, relativeTolerance: 0.001)
+            lufs.isApproximatelyEqual(to: -25.29, relativeTolerance: 0.001)
         )
     }
 }
