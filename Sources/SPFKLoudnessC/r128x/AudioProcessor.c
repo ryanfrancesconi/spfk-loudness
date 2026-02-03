@@ -100,9 +100,9 @@ OSStatus eburAudioConvCallback(AudioConverterRef            inAudioConverter,
 
 OSStatus eburAudioReader(
     CFStringRef audioFilePath,
-    double      *loudnessValue,
+    double      *loudnessIntegrated,
     double      *loudnessRange,
-    Float32     *maxTruePeakLevel,
+    float       *maxTruePeakLevel,
     double      *maxMomentaryLoudness,
     double      *maxShortTermLoudness
     ) {
@@ -214,9 +214,7 @@ OSStatus eburAudioReader(
     }
 
     //setting userData
-    LoudnessData userData = {
-        0
-    };
+    LoudnessData userData = {};
 
     userData.mAudioFileRef = &audioFileRef;
 
@@ -271,14 +269,16 @@ OSStatus eburAudioReader(
             return err;
         }
 
-        Float32 *samples = (Float32 *)converterOutBufferList.mBuffers[0].mData;
-        UInt32 nChannels = converterOutBufferList.mBuffers[0].mNumberChannels;
-        userData.mFramesProduced += framesToRead;
+        if (framesToRead > 0) {
+            Float32 *samples = (Float32 *)converterOutBufferList.mBuffers[0].mData;
+            UInt32 nChannels = converterOutBufferList.mBuffers[0].mNumberChannels;
+            userData.mFramesProduced += framesToRead;
 
-        for (int i = 0; i < framesToRead; i++) {
-            for (int j = 0; j < nChannels; j++) {
-                if (fabsf(samples[(nChannels * i) + j]) > maxTP) {
-                    maxTP = fabsf(samples[(nChannels * i) + j]);
+            for (int i = 0; i < framesToRead; i++) {
+                for (int j = 0; j < nChannels; j++) {
+                    if (fabsf(samples[(nChannels * i) + j]) > maxTP) {
+                        maxTP = fabsf(samples[(nChannels * i) + j]);
+                    }
                 }
             }
         }
@@ -291,7 +291,7 @@ OSStatus eburAudioReader(
 
     ebur128_loudness_global(userData.mState, &il);
     il = rint(100 * il) / 100;
-    *loudnessValue = il;
+    *loudnessIntegrated = il;
 
     ebur128_loudness_range(userData.mState, &lra);
     lra = rint(100 * lra) / 100;
@@ -318,8 +318,13 @@ OSStatus eburAudioReader(
 double maxValue(CFMutableArrayRef blocks) {
     // CFShow(blocks);
 
-    double highest = -100;
     CFIndex count = CFArrayGetCount(blocks);
+
+    if (count == 0) {
+        return NAN;
+    }
+
+    double highest = -0x7FFF / 100;
 
     for (CFIndex i = 0; i < count; ++i) {
         CFNumberRef cfValue = (CFNumberRef)CFArrayGetValueAtIndex(blocks, i);

@@ -8,6 +8,7 @@ import SPFKUtils
 
 extension LoudnessDescription {
     public init(parsing url: URL) async throws {
+        // will only create a longer file if needed
         let tmpfile: URL? = try? await AudioTools.createLoopedAudio(input: url, minimumDuration: 5)
 
         defer {
@@ -24,11 +25,11 @@ extension LoudnessDescription {
         }
 
         self = LoudnessDescription(
-            loudnessValue: scanner.loudnessValue.isFinite ? scanner.loudnessValue : nil,
-            loudnessRange: scanner.loudnessRange.isFinite ? scanner.loudnessRange : nil,
-            maxTruePeakLevel: scanner.maxTruePeakLevel.isFinite ? scanner.maxTruePeakLevel : nil,
-            maxMomentaryLoudness: scanner.maxMomentaryLoudness.isFinite ? scanner.maxMomentaryLoudness : nil,
-            maxShortTermLoudness: scanner.maxShortTermLoudness.isFinite ? scanner.maxShortTermLoudness : nil
-        )
+            loudnessIntegrated: scanner.loudnessIntegrated,
+            loudnessRange: scanner.loudnessRange,
+            maxTruePeakLevel: scanner.maxTruePeakLevel,
+            maxMomentaryLoudness: scanner.maxMomentaryLoudness,
+            maxShortTermLoudness: scanner.maxShortTermLoudness
+        ).validated()
     }
 }

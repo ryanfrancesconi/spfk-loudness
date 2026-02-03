@@ -6,12 +6,12 @@
 
 @interface LoudnessScanner : NSObject
 
-@property Float64 loudnessValue;
+@property Float64 loudnessIntegrated;
 @property Float64 loudnessRange;
 @property Float32 maxTruePeakLevel;
 @property Float64 maxMomentaryLoudness;
 @property Float64 maxShortTermLoudness;
 
-- (id)initWithPath:(NSString *)path;
+- (nullable id)initWithPath:(nonnull NSString *)path;
 
 @end
