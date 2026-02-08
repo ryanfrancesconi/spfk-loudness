@@ -17,7 +17,7 @@
     ];
 }
 
-- (nullable id)initWithPath:(nonnull NSString *)path {
+- (nullable instancetype)initWithPath:(nonnull NSString *)path {
     self = [super init];
 
     self.loudnessIntegrated = NAN;

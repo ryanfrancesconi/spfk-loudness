@@ -12,6 +12,6 @@
 @property Float64 maxMomentaryLoudness;
 @property Float64 maxShortTermLoudness;
 
-- (nullable id)initWithPath:(nonnull NSString *)path;
+- (nullable instancetype)initWithPath:(nonnull NSString *)path;
 
 @end
