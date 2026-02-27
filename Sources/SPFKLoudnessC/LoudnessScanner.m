@@ -1,20 +1,19 @@
-// Copyright Ryan Francesconi. All Rights Reserved. Revision History at https://github.com/ryanfrancesconi/spfk-loudness
+// Copyright Ryan Francesconi. All Rights Reserved. Revision History at
+// https://github.com/ryanfrancesconi/spfk-loudness
 
-#import "AudioProcessor.h"
 #import "LoudnessScanner.h"
+#import "AudioProcessor.h"
 
 /// A simple objc wrapper on top of the r128x wrapper for libebur128
 @implementation LoudnessScanner
 
 - (NSString *)description {
     return [NSString
-            stringWithFormat:@"[LUFS: %.2f, Loudness Range: %.2f, True Peak: %.2f, Max Momentary: %.2f, Max Short-Term: %.2f]",
-            self.loudnessIntegrated,
-            self.loudnessRange,
-            self.maxTruePeakLevel,
-            self.maxMomentaryLoudness,
-            self.maxShortTermLoudness
-    ];
+        stringWithFormat:@"[LUFS: %.2f, Loudness Range: %.2f, True Peak: %.2f, "
+                         @"Max Momentary: %.2f, Max Short-Term: %.2f]",
+                         self.loudnessIntegrated, self.loudnessRange,
+                         self.maxTruePeakLevel, self.maxMomentaryLoudness,
+                         self.maxShortTermLoudness];
 }
 
 - (nullable instancetype)initWithPath:(nonnull NSString *)path {
@@ -41,12 +40,8 @@
     Float64 maxShortTermLoudness;
 
     OSStatus readErr = eburAudioReader(
-        (__bridge CFStringRef)(path),
-        &loudnessIntegrated,
-        &loudnessRange,
-        &maxTruePeakLevel,
-        &maxMomentaryLoudness,
-        &maxShortTermLoudness);
+        (__bridge CFStringRef)(path), &loudnessIntegrated, &loudnessRange,
+        &maxTruePeakLevel, &maxMomentaryLoudness, &maxShortTermLoudness);
 
     if (noErr != readErr) {
         NSLog(@"Failed to parse %@, with error %i", path, readErr);
