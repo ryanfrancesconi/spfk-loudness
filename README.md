@@ -1,5 +1,8 @@
 # SPFKLoudness
 
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fryanfrancesconi%2Fspfk-loudness%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/ryanfrancesconi/spfk-loudness)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fryanfrancesconi%2Fspfk-loudness%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/ryanfrancesconi/spfk-loudness)
+
 A Swift package for measuring audio loudness according to the [EBU R128](https://tech.ebu.ch/docs/r/r128.pdf) standard. Built on [libebur128](https://github.com/jiixyj/libebur128) with a pure Swift analysis layer using Core Audio for decoding and sample-rate conversion.
 
 Provides integrated loudness (LUFS), loudness range (LU), true peak (dBTP), and momentary/short-term loudness values for any audio format supported by Core Audio.
