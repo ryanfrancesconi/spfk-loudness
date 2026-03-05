@@ -2,7 +2,6 @@ import AVFoundation
 import Numerics
 import SPFKAudioBase
 import SPFKBase
-import SPFKLoudnessC
 import SPFKTesting
 import Testing
 

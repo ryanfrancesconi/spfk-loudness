@@ -2,7 +2,6 @@ import Foundation
 import Numerics
 import SPFKAudioBase
 import SPFKBase
-import SPFKLoudnessC
 import SPFKTesting
 import Testing
 
@@ -33,26 +32,21 @@ final class LoudnessErrorTests: BinTestCase {
         }
     }
 
-    @Test("LoudnessScanner lastError is noErr on success")
-    func scannerLastErrorOnSuccess() {
+    @Test("LoudnessAnalyzer throws for non-existent file")
+    func analyzerThrowsForMissingFile() throws {
+        let url = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).wav")
+        #expect(throws: Error.self) {
+            try LoudnessAnalyzer.analyze(url: url)
+        }
+    }
+
+    @Test("LoudnessAnalyzer produces valid result for valid file")
+    func analyzerSucceedsForValidFile() throws {
         let url = TestBundleResources.shared.tabla_wav
-        let scanner = LoudnessScanner(path: url.path)
-        #expect(scanner.lastError == noErr)
-    }
-
-    @Test("LoudnessScanner lastError is non-zero on failure")
-    func scannerLastErrorOnFailure() {
-        let scanner = LoudnessScanner(path: "/tmp/does_not_exist_\(UUID().uuidString).wav")
-        #expect(scanner.lastError != noErr)
-    }
-
-    @Test("LoudnessScanner properties are NaN for non-existent file")
-    func scannerPropertiesNaNForMissingFile() {
-        let scanner = LoudnessScanner(path: "/tmp/does_not_exist_\(UUID().uuidString).wav")
-        #expect(scanner.lastError != noErr)
-        #expect(scanner.loudnessIntegrated.isNaN)
-        #expect(scanner.loudnessRange.isNaN)
-        #expect(scanner.maxTruePeakLevel.isNaN)
+        let result = try LoudnessAnalyzer.analyze(url: url)
+        #expect(!result.loudnessIntegrated.isNaN)
+        #expect(!result.loudnessRange.isNaN)
+        #expect(!result.maxTruePeakLevel.isNaN)
     }
 }
 
@@ -442,34 +436,21 @@ final class LoudnessAdditionalFormatTests: BinTestCase {
     }
 }
 
-// MARK: - LoudnessScanner ObjC Bridge
+// MARK: - LoudnessAnalyzer Direct Tests
 
 @Suite(.tags(.file))
-struct LoudnessScannerBridgeTests {
-    @Test("scanner description contains all metric labels")
-    func scannerDescription() {
-        let url = TestBundleResources.shared.tabla_wav
-        let scanner = LoudnessScanner(path: url.path)
-
-        let desc = scanner.description
-        #expect(desc.contains("LUFS"))
-        #expect(desc.contains("Loudness Range"))
-        #expect(desc.contains("True Peak"))
-        #expect(desc.contains("Max Momentary"))
-        #expect(desc.contains("Max Short-Term"))
-    }
-
-    @Test("scanner metrics match Swift LoudnessDescription")
-    func scannerMetricsMatchSwift() async throws {
+struct LoudnessAnalyzerTests {
+    @Test("analyzer result matches LoudnessDescription")
+    func analyzerResultMatchesDescription() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
-        let scanner = LoudnessScanner(path: url.path)
+        let result = try LoudnessAnalyzer.analyze(url: url)
         let desc = try await LoudnessDescription(parsing: url)
 
-        #expect(scanner.loudnessIntegrated == desc.loudnessIntegrated)
-        #expect(scanner.loudnessRange == desc.loudnessRange)
-        #expect(scanner.maxTruePeakLevel == desc.maxTruePeakLevel)
-        #expect(scanner.maxMomentaryLoudness == desc.maxMomentaryLoudness)
-        #expect(scanner.maxShortTermLoudness == desc.maxShortTermLoudness)
+        #expect(result.loudnessIntegrated == desc.loudnessIntegrated)
+        #expect(result.loudnessRange == desc.loudnessRange)
+        #expect(result.maxTruePeakLevel == desc.maxTruePeakLevel)
+        #expect(result.maxMomentaryLoudness == desc.maxMomentaryLoudness)
+        #expect(result.maxShortTermLoudness == desc.maxShortTermLoudness)
     }
 }

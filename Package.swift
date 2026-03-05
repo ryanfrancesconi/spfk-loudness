@@ -10,7 +10,7 @@ let package = Package(
     products: [
         .library(
             name: "SPFKLoudness",
-            targets: ["SPFKLoudness", "SPFKLoudnessC",]
+            targets: ["SPFKLoudness"]
         ),
     ],
     dependencies: [
@@ -33,22 +33,14 @@ let package = Package(
         .target(
             name: "SPFKLoudnessC",
             dependencies: [],
-            publicHeadersPath: "include",
-            cSettings: [
-                .headerSearchPath("include_private")
-            ],
-            cxxSettings: [
-                .headerSearchPath("include_private")
-            ]
+            publicHeadersPath: "include"
         ),
         .testTarget(
             name: "SPFKLoudnessTests",
             dependencies: [
                 .targetItem(name: "SPFKLoudness", condition: nil),
-                .targetItem(name: "SPFKLoudnessC", condition: nil),
                 .product(name: "SPFKTesting", package: "spfk-testing"),
             ]
         ),
-    ],
-    cxxLanguageStandard: .cxx20
+    ]
 )

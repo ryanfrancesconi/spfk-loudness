@@ -3,7 +3,6 @@
 import Foundation
 import SPFKAudioBase
 import SPFKBase
-import SPFKLoudnessC
 import SPFKUtils
 
 extension LoudnessDescription {
@@ -25,19 +24,14 @@ extension LoudnessDescription {
         }
 
         let url = tmpfile ?? url
-
-        let scanner = LoudnessScanner(path: url.path)
-
-        if scanner.lastError != noErr {
-            throw NSError(description: "Failed to analyze '\(url.lastPathComponent)' (OSStatus \(scanner.lastError))")
-        }
+        let result = try LoudnessAnalyzer.analyze(url: url)
 
         self = LoudnessDescription(
-            loudnessIntegrated: scanner.loudnessIntegrated,
-            loudnessRange: scanner.loudnessRange,
-            maxTruePeakLevel: scanner.maxTruePeakLevel,
-            maxMomentaryLoudness: scanner.maxMomentaryLoudness,
-            maxShortTermLoudness: scanner.maxShortTermLoudness
+            loudnessIntegrated: result.loudnessIntegrated,
+            loudnessRange: result.loudnessRange,
+            maxTruePeakLevel: result.maxTruePeakLevel,
+            maxMomentaryLoudness: result.maxMomentaryLoudness,
+            maxShortTermLoudness: result.maxShortTermLoudness
         ).validated()
     }
 }
