@@ -8,7 +8,7 @@ import Testing
 @testable import SPFKLoudness
 
 @Suite(.tags(.file))
-final class LoudnessTests: BinTestCase {
+final class LoudnessTests: TestCaseModel {
     @Test func measureLoudness() async throws {
         let url = TestBundleResources.shared.tabla_wav
 

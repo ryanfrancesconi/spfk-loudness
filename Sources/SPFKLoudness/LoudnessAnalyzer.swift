@@ -31,27 +31,78 @@ public enum LoudnessAnalyzer {
     ///   - minimumDuration: The minimum number of seconds of audio to feed to
     ///     libebur128. Files shorter than this are looped to reach the target.
     ///     Pass `nil` (the default) to disable looping.
-    /// - Returns: A ``LoudnessResult`` containing integrated loudness, loudness range,
+    /// - Returns: A ``LoudnessDescription`` containing integrated loudness, loudness range,
     ///   max true peak, max momentary loudness, and max short-term loudness.
     /// - Throws: An `NSError` with `NSOSStatusErrorDomain` if the file cannot be
     ///   opened, its format cannot be read, or the audio converter fails.
     public static func analyze(url: URL, minimumDuration: TimeInterval? = nil) throws -> LoudnessDescription {
-        // Open audio file
-        var audioFileRef: ExtAudioFileRef?
-        var err = ExtAudioFileOpenURL(url as CFURL, &audioFileRef)
-
-        guard err == noErr, let audioFileRef else {
-            throw NSError(domain: NSOSStatusErrorDomain, code: Int(err),
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to open '\(url.lastPathComponent)' (OSStatus \(err))"])
-        }
-
+        let audioFileRef = try openAudioFile(url: url)
         defer { ExtAudioFileDispose(audioFileRef) }
 
-        // Get input file format
+        let clientASBD = try configureClientFormat(for: audioFileRef)
+
+        let overSamplingFactor: UInt32 = if clientASBD.mSampleRate <= 48000 {
+            4
+        } else if clientASBD.mSampleRate <= 96000 {
+            2
+        } else {
+            1
+        }
+
+        let converter = try createConverter(clientASBD: clientASBD, overSamplingFactor: overSamplingFactor)
+        defer { AudioConverterDispose(converter.ref) }
+        defer { converter.inputBuffer.deallocate() }
+        defer { converter.outputBuffer.deallocate() }
+
+        let state = try createEBUR128State(channelCount: clientASBD.mChannelsPerFrame, sampleRate: clientASBD.mSampleRate)
+        defer {
+            var mutableState: UnsafeMutablePointer<ebur128_state>? = state
+            ebur128_destroy(&mutableState)
+        }
+
+        var context = try makeContext(
+            audioFileRef: audioFileRef,
+            fileOutBuffer: converter.inputBuffer,
+            state: state,
+            clientASBD: clientASBD,
+            minimumDuration: minimumDuration
+        )
+
+        let maxTruePeak = try processAudio(
+            converterRef: converter.ref,
+            context: &context,
+            converterOutASBD: converter.outputASBD,
+            converterOutBuffer: converter.outputBuffer,
+            framesPerIteration: converter.outputFrameCount
+        )
+
+        return extractResults(state: state, context: context, maxTruePeak: maxTruePeak)
+    }
+}
+
+// MARK: - Private Helpers
+
+extension LoudnessAnalyzer {
+    /// Opens an audio file for reading via Extended Audio File Services.
+    private static func openAudioFile(url: URL) throws -> ExtAudioFileRef {
+        var audioFileRef: ExtAudioFileRef?
+        let err = ExtAudioFileOpenURL(url as CFURL, &audioFileRef)
+
+        guard err == noErr, let audioFileRef else {
+            throw NSError(
+                domain: NSOSStatusErrorDomain, code: Int(err),
+                userInfo: [NSLocalizedDescriptionKey: "Failed to open '\(url.lastPathComponent)' (OSStatus \(err))"]
+            )
+        }
+        return audioFileRef
+    }
+
+    /// Reads the file's native format and sets the client format to Float32 interleaved PCM.
+    private static func configureClientFormat(for audioFileRef: ExtAudioFileRef) throws -> AudioStreamBasicDescription {
         var inFileASBD = AudioStreamBasicDescription()
         var propSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
 
-        err = ExtAudioFileGetProperty(
+        var err = ExtAudioFileGetProperty(
             audioFileRef,
             kExtAudioFileProperty_FileDataFormat,
             &propSize,
@@ -59,7 +110,6 @@ public enum LoudnessAnalyzer {
         )
         guard err == noErr else { throw osStatusError(err) }
 
-        // Set client format: Float32 interleaved PCM
         var clientASBD = AudioStreamBasicDescription()
         clientASBD.mChannelsPerFrame = inFileASBD.mChannelsPerFrame
         clientASBD.mSampleRate = inFileASBD.mSampleRate
@@ -79,86 +129,98 @@ public enum LoudnessAnalyzer {
         )
         guard err == noErr else { throw osStatusError(err) }
 
-        // Oversampling factor for true peak detection
-        let overSamplingFactor: UInt32 = if clientASBD.mSampleRate <= 48000 {
-            4
-        } else if clientASBD.mSampleRate <= 96000 {
-            2
-        } else {
-            1
-        }
+        return clientASBD
+    }
 
-        // Create AudioConverter
-        let converterInASBD = clientASBD
+    /// Bundles the AudioConverter and its associated buffers.
+    private struct ConverterResources {
+        let ref: AudioConverterRef
+        let outputASBD: AudioStreamBasicDescription
+        let inputBuffer: UnsafeMutablePointer<Float32>
+        let outputBuffer: UnsafeMutablePointer<UInt8>
+        let outputFrameCount: UInt32
+    }
+
+    /// Creates an `AudioConverter` for oversampling and allocates the input/output buffers.
+    private static func createConverter(
+        clientASBD: AudioStreamBasicDescription,
+        overSamplingFactor: UInt32
+    ) throws -> ConverterResources {
+        var converterInASBD = clientASBD
         var converterOutASBD = clientASBD
         converterOutASBD.mSampleRate = Float64(overSamplingFactor) * clientASBD.mSampleRate
 
         var converterRef: AudioConverterRef?
-        var converterInCopy = converterInASBD
-        err = AudioConverterNew(&converterInCopy, &converterOutASBD, &converterRef)
+        var err = AudioConverterNew(&converterInASBD, &converterOutASBD, &converterRef)
         guard err == noErr, let converterRef else { throw osStatusError(err) }
-        defer { AudioConverterDispose(converterRef) }
 
-        // Allocate converter output buffer
-        let framesInConverterOutBuffer = overSamplingFactor * defaultBufferSize
-        let converterOutBuffer = UnsafeMutablePointer<UInt8>.allocate(
-            capacity: Int(framesInConverterOutBuffer * converterOutASBD.mBytesPerFrame)
-        )
-        defer { converterOutBuffer.deallocate() }
-
-        var converterOutBufferList = AudioBufferList(
-            mNumberBuffers: 1,
-            mBuffers: AudioBuffer(
-                mNumberChannels: converterOutASBD.mChannelsPerFrame,
-                mDataByteSize: framesInConverterOutBuffer * converterOutASBD.mBytesPerFrame,
-                mData: converterOutBuffer
-            )
+        let outputFrameCount = overSamplingFactor * defaultBufferSize
+        let outputBuffer = UnsafeMutablePointer<UInt8>.allocate(
+            capacity: Int(outputFrameCount * converterOutASBD.mBytesPerFrame)
         )
 
-        // Calculate input buffer size
-        var converterInputBufferSize = converterOutBufferList.mBuffers.mDataByteSize
-        propSize = UInt32(MemoryLayout<UInt32>.size)
+        // Ask the converter how large the input buffer needs to be
+        var inputBufferSize = outputFrameCount * converterOutASBD.mBytesPerFrame
+        var propSize = UInt32(MemoryLayout<UInt32>.size)
 
         err = AudioConverterGetProperty(
             converterRef,
             kAudioConverterPropertyCalculateInputBufferSize,
             &propSize,
-            &converterInputBufferSize
+            &inputBufferSize
         )
-        guard err == noErr else { throw osStatusError(err) }
+        guard err == noErr else {
+            outputBuffer.deallocate()
+            AudioConverterDispose(converterRef)
+            throw osStatusError(err)
+        }
 
-        let fileOutBuffer = UnsafeMutablePointer<Float32>.allocate(
-            capacity: Int(converterInputBufferSize) / MemoryLayout<Float32>.size
+        let inputBuffer = UnsafeMutablePointer<Float32>.allocate(
+            capacity: Int(inputBufferSize) / MemoryLayout<Float32>.size
         )
-        defer { fileOutBuffer.deallocate() }
 
-        // Initialize ebur128 state
+        return ConverterResources(
+            ref: converterRef,
+            outputASBD: converterOutASBD,
+            inputBuffer: inputBuffer,
+            outputBuffer: outputBuffer,
+            outputFrameCount: outputFrameCount
+        )
+    }
+
+    /// Initializes a libebur128 state for integrated loudness and loudness range measurement.
+    private static func createEBUR128State(channelCount: UInt32, sampleRate: Float64) throws -> UnsafeMutablePointer<ebur128_state> {
         guard let state = ebur128_init(
-            UInt32(clientASBD.mChannelsPerFrame),
-            UInt(clientASBD.mSampleRate),
+            UInt32(channelCount),
+            UInt(sampleRate),
             Int32(EBUR128_MODE_I.rawValue | EBUR128_MODE_LRA.rawValue)
         ) else {
             throw osStatusError(OSStatus(kAudio_MemFullError))
         }
-        defer {
-            var mutableState: UnsafeMutablePointer<ebur128_state>? = state
-            ebur128_destroy(&mutableState)
-        }
+        return state
+    }
 
-        // Set up callback context
+    /// Builds a ``CallbackContext``, including the file length query and target frame calculation for looping.
+    private static func makeContext(
+        audioFileRef: ExtAudioFileRef,
+        fileOutBuffer: UnsafeMutablePointer<Float32>,
+        state: UnsafeMutablePointer<ebur128_state>,
+        clientASBD: AudioStreamBasicDescription,
+        minimumDuration: TimeInterval?
+    ) throws -> CallbackContext {
         let reportIntervalFrames = UInt32(clientASBD.mSampleRate / 10)
+
         var context = CallbackContext(
             audioFileRef: audioFileRef,
             fileOutBuffer: fileOutBuffer,
             state: state,
             neededFrames: reportIntervalFrames,
             reportIntervalFrames: reportIntervalFrames,
-            converterInASBD: converterInASBD
+            converterInASBD: clientASBD
         )
 
-        // Get file length
         var size = UInt32(MemoryLayout<Int64>.size)
-        err = ExtAudioFileGetProperty(
+        let err = ExtAudioFileGetProperty(
             audioFileRef,
             kExtAudioFileProperty_FileLengthFrames,
             &size,
@@ -166,30 +228,49 @@ public enum LoudnessAnalyzer {
         )
         guard err == noErr else { throw osStatusError(err) }
 
-        // Compute target frames for looping short files
         let fileDuration = Double(context.fileLengthInFrames) / clientASBD.mSampleRate
 
         if let minimumDuration,
            minimumDuration > 0,
            fileDuration > 0,
-           fileDuration < minimumDuration
+           fileDuration * 2 < minimumDuration
         {
             context.targetFrames = Int64(minimumDuration * clientASBD.mSampleRate)
         } else {
             context.targetFrames = context.fileLengthInFrames
         }
 
-        // Process audio
-        var maxTP: Float32 = 0
+        return context
+    }
+
+    /// Drives the `AudioConverter`, feeding decoded audio through the callback and tracking true peak.
+    ///
+    /// - Returns: The maximum true-peak sample magnitude (linear scale, pre-dBTP conversion).
+    private static func processAudio(
+        converterRef: AudioConverterRef,
+        context: inout CallbackContext,
+        converterOutASBD: AudioStreamBasicDescription,
+        converterOutBuffer: UnsafeMutablePointer<UInt8>,
+        framesPerIteration: UInt32
+    ) throws -> Float32 {
+        var maxTruePeak: Float32 = 0
+
+        var converterOutBufferList = AudioBufferList(
+            mNumberBuffers: 1,
+            mBuffers: AudioBuffer(
+                mNumberChannels: converterOutASBD.mChannelsPerFrame,
+                mDataByteSize: framesPerIteration * converterOutASBD.mBytesPerFrame,
+                mData: converterOutBuffer
+            )
+        )
 
         repeat {
-            var framesToRead = framesInConverterOutBuffer
+            var framesToRead = framesPerIteration
 
-            // Reset converter output buffer for each iteration
-            converterOutBufferList.mBuffers.mDataByteSize = framesInConverterOutBuffer * converterOutASBD.mBytesPerFrame
+            converterOutBufferList.mBuffers.mDataByteSize = framesPerIteration * converterOutASBD.mBytesPerFrame
             converterOutBufferList.mBuffers.mData = UnsafeMutableRawPointer(converterOutBuffer)
 
-            err = AudioConverterFillComplexBuffer(
+            let err = AudioConverterFillComplexBuffer(
                 converterRef,
                 audioConverterCallback,
                 &context,
@@ -208,14 +289,11 @@ public enum LoudnessAnalyzer {
                 let nChannels = converterOutBufferList.mBuffers.mNumberChannels
                 context.framesProduced += framesToRead
 
-                let totalSamples = Int(framesToRead * nChannels)
                 var blockMax: Float32 = 0
+                vDSP_maxmgv(samples, 1, &blockMax, vDSP_Length(framesToRead * nChannels))
 
-                // Calculates the single-precision maximum magnitude of a vector.
-                vDSP_maxmgv(samples, 1, &blockMax, vDSP_Length(totalSamples))
-
-                if blockMax > maxTP {
-                    maxTP = blockMax
+                if blockMax > maxTruePeak {
+                    maxTruePeak = blockMax
                 }
             }
 
@@ -223,17 +301,24 @@ public enum LoudnessAnalyzer {
 
         } while context.fileFramesRead < context.targetFrames
 
-        // Extract results
-        var il: Float64 = 0
-        var lra: Float64 = 0
+        return maxTruePeak
+    }
 
+    /// Queries libebur128 for final metrics and assembles a ``LoudnessDescription``.
+    private static func extractResults(
+        state: UnsafeMutablePointer<ebur128_state>,
+        context: CallbackContext,
+        maxTruePeak: Float32
+    ) -> LoudnessDescription {
+        var il: Float64 = 0
         ebur128_loudness_global(state, &il)
         il = rint(100 * il) / 100
 
+        var lra: Float64 = 0
         ebur128_loudness_range(state, &lra)
         lra = rint(100 * lra) / 100
 
-        maxTP = rintf(100 * 20 * log10(maxTP)) / 100
+        let truePeakDBTP = rintf(100 * 20 * log10(maxTruePeak)) / 100
 
         let maxMomentaryLoudness = context.hasMomentary
             ? rint(100 * context.maxMomentary) / 100
@@ -246,7 +331,7 @@ public enum LoudnessAnalyzer {
         return LoudnessDescription(
             loudnessIntegrated: il,
             loudnessRange: lra,
-            maxTruePeakLevel: maxTP,
+            maxTruePeakLevel: truePeakDBTP,
             maxMomentaryLoudness: maxMomentaryLoudness,
             maxShortTermLoudness: maxShortTermLoudness
         )

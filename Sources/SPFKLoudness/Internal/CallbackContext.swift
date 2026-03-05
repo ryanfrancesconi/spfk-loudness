@@ -4,8 +4,6 @@ import AudioToolbox
 import Foundation
 import SPFKLoudnessC
 
-// MARK: - Callback Context
-
 /// Mutable state shared between the ``AudioConverterComplexInputDataProc`` callback and
 /// the main processing loop. Passed as `inUserData` via `UnsafeMutablePointer`.
 ///

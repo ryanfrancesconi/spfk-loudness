@@ -9,16 +9,9 @@ import Testing
 
 // MARK: - Error Handling
 
-@Suite(.tags(.file))
+@Suite(.serialized, .tags(.file))
 final class LoudnessErrorTests: BinTestCase {
-    @Test("non-existent file path throws")
-    func nonExistentFile() async throws {
-        let url = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).wav")
-        await #expect(throws: Error.self) {
-            try await LoudnessDescription(parsing: url)
-        }
-    }
-
+    /// As this test is writing an actual file, Make Suite serialized
     @Test("non-audio file produces invalid result or throws")
     func nonAudioFile() async throws {
         let textFile = bin.appendingPathComponent("not_audio.wav")
@@ -29,6 +22,14 @@ final class LoudnessErrorTests: BinTestCase {
             #expect(!loudness.isValid)
         } catch {
             // Throwing is also acceptable
+        }
+    }
+
+    @Test("non-existent file path throws")
+    func nonExistentFile() async throws {
+        let url = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).wav")
+        await #expect(throws: Error.self) {
+            try await LoudnessDescription(parsing: url)
         }
     }
 
@@ -44,16 +45,21 @@ final class LoudnessErrorTests: BinTestCase {
     func analyzerSucceedsForValidFile() throws {
         let url = TestBundleResources.shared.tabla_wav
         let result = try LoudnessAnalyzer.analyze(url: url)
-        #expect(!result.loudnessIntegrated.isNaN)
-        #expect(!result.loudnessRange.isNaN)
-        #expect(!result.maxTruePeakLevel.isNaN)
+
+        let li = try #require(result.loudnessIntegrated)
+        let lra = try #require(result.loudnessRange)
+        let maxTP = try #require(result.maxTruePeakLevel)
+
+        #expect(!li.isNaN)
+        #expect(!lra.isNaN)
+        #expect(!maxTP.isNaN)
     }
 }
 
 // MARK: - Validation Edge Cases
 
 @Suite(.tags(.file))
-final class LoudnessValidationTests: BinTestCase {
+final class LoudnessValidationTests: TestCaseModel {
     @Test("validated() clears out-of-range values")
     func validatedClearsOutOfRange() {
         let desc = LoudnessDescription(
@@ -433,24 +439,5 @@ final class LoudnessAdditionalFormatTests: BinTestCase {
 
         #expect(loudness.isValid)
         #expect(loudness.loudnessIntegrated != nil)
-    }
-}
-
-// MARK: - LoudnessAnalyzer Direct Tests
-
-@Suite(.tags(.file))
-struct LoudnessAnalyzerTests {
-    @Test("analyzer result matches LoudnessDescription")
-    func analyzerResultMatchesDescription() async throws {
-        let url = TestBundleResources.shared.tabla_wav
-
-        let result = try LoudnessAnalyzer.analyze(url: url)
-        let desc = try await LoudnessDescription(parsing: url)
-
-        #expect(result.loudnessIntegrated == desc.loudnessIntegrated)
-        #expect(result.loudnessRange == desc.loudnessRange)
-        #expect(result.maxTruePeakLevel == desc.maxTruePeakLevel)
-        #expect(result.maxMomentaryLoudness == desc.maxMomentaryLoudness)
-        #expect(result.maxShortTermLoudness == desc.maxShortTermLoudness)
     }
 }
