@@ -26,8 +26,10 @@ extension LoudnessDescription {
 
         let url = tmpfile ?? url
 
-        guard let scanner = LoudnessScanner(path: url.path) else {
-            throw NSError(description: "Failed to analyze '\(url.lastPathComponent)'")
+        let scanner = LoudnessScanner(path: url.path)
+
+        if scanner.lastError != noErr {
+            throw NSError(description: "Failed to analyze '\(url.lastPathComponent)' (OSStatus \(scanner.lastError))")
         }
 
         self = LoudnessDescription(

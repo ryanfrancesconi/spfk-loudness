@@ -22,7 +22,7 @@
                          self.maxShortTermLoudness];
 }
 
-- (nullable instancetype)initWithPath:(nonnull NSString *)path {
+- (nonnull instancetype)initWithPath:(nonnull NSString *)path {
     self = [super init];
 
     self.loudnessIntegrated = NAN;
@@ -31,9 +31,7 @@
     self.maxMomentaryLoudness = NAN;
     self.maxShortTermLoudness = NAN;
 
-    if (![self measure:path]) {
-        return nil;
-    }
+    [self measure:path];
 
     return self;
 }

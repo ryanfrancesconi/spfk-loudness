@@ -15,6 +15,6 @@
 /// The OSStatus error code from the last measurement, or `noErr` (0) on success.
 @property (readonly) OSStatus lastError;
 
-- (nullable instancetype)initWithPath:(nonnull NSString *)path;
+- (nonnull instancetype)initWithPath:(nonnull NSString *)path;
 
 @end
