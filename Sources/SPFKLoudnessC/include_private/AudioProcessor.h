@@ -14,10 +14,13 @@ typedef struct LoudnessData {
     UInt32 mFileFramesRead;
     UInt32 mFramesProduced;
     UInt32 mNeededFrames;
-    UInt32 mReportIntervalFrames; // experimental block logging every interval
+    UInt32 mReportIntervalFrames;
     SInt64 fileLengthInFrames;
-    CFMutableArrayRef momentaryBlocks; // to store momentary blocks
-    CFMutableArrayRef shortTermBlocks; // to store short-term blocks
+    AudioStreamBasicDescription mConverterInASBD;
+    double maxMomentary;
+    double maxShortTerm;
+    bool hasMomentary;
+    bool hasShortTerm;
 } LoudnessData;
 
 OSStatus
@@ -34,8 +37,5 @@ eburAudioReader(CFStringRef audioFilePath,
                 Float32     *maxTruePeakLevel,
                 double      *maxMomentaryLoudness,
                 double      *maxShortTermLoudness);
-
-double
-maxValue(CFMutableArrayRef blocks);
 
 #endif // !audioprocessor_h

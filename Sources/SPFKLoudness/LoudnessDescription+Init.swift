@@ -9,7 +9,13 @@ import SPFKUtils
 extension LoudnessDescription {
     public init(parsing url: URL) async throws {
         // will only create a longer file if needed
-        let tmpfile: URL? = try? await AudioTools.createLoopedAudio(input: url, minimumDuration: 5)
+        var tmpfile: URL?
+
+        do {
+            tmpfile = try await AudioTools.createLoopedAudio(input: url, minimumDuration: 5)
+        } catch {
+            Log.debug("Failed to create looped audio for", url.lastPathComponent, ":", error.localizedDescription)
+        }
 
         defer {
             if let tmpfile, tmpfile.exists {

@@ -5,7 +5,13 @@
 #import "AudioProcessor.h"
 
 /// A simple objc wrapper on top of the r128x wrapper for libebur128
-@implementation LoudnessScanner
+@implementation LoudnessScanner {
+    OSStatus _lastError;
+}
+
+- (OSStatus)lastError {
+    return _lastError;
+}
 
 - (NSString *)description {
     return [NSString
@@ -42,6 +48,8 @@
     OSStatus readErr = eburAudioReader(
         (__bridge CFStringRef)(path), &loudnessIntegrated, &loudnessRange,
         &maxTruePeakLevel, &maxMomentaryLoudness, &maxShortTermLoudness);
+
+    _lastError = readErr;
 
     if (noErr != readErr) {
         NSLog(@"Failed to parse %@, with error %i", path, readErr);

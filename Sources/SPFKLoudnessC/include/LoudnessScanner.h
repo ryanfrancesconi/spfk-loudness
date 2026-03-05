@@ -12,6 +12,9 @@
 @property Float64 maxMomentaryLoudness;
 @property Float64 maxShortTermLoudness;
 
+/// The OSStatus error code from the last measurement, or `noErr` (0) on success.
+@property (readonly) OSStatus lastError;
+
 - (nullable instancetype)initWithPath:(nonnull NSString *)path;
 
 @end
