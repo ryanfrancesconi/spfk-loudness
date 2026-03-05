@@ -15,14 +15,6 @@ extension LoudnessDescription {
     /// - Parameter url: A file URL for any audio format supported by Core Audio.
     /// - Throws: If the file cannot be opened or decoded.
     public init(parsing url: URL) async throws {
-        let result = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5)
-
-        self = LoudnessDescription(
-            loudnessIntegrated: result.loudnessIntegrated,
-            loudnessRange: result.loudnessRange,
-            maxTruePeakLevel: result.maxTruePeakLevel,
-            maxMomentaryLoudness: result.maxMomentaryLoudness,
-            maxShortTermLoudness: result.maxShortTermLoudness
-        ).validated()
+        self = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5).validated()
     }
 }
