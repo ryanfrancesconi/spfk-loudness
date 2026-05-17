@@ -20,7 +20,7 @@ public enum NormalizeAnalyzer {
             case .lufs:
                 return try await analyzeLUFS(url: url, options: options)
             case .peak:
-                return try analyzePeak(url: url, options: options)
+                return try await analyzePeak(url: url, options: options)
             }
         } catch {
             // Return unity gain so the failure is silent at the call site —
@@ -58,8 +58,8 @@ extension NormalizeAnalyzer {
         )
     }
 
-    private static func analyzePeak(url: URL, options: NormalizeOptions) throws -> NormalizeDescription {
-        let peak = try BufferPeak(url: url)
+    private static func analyzePeak(url: URL, options: NormalizeOptions) async throws -> NormalizeDescription {
+        let peak = try await BufferPeak(url: url)
         guard peak.amplitude > 0 else { return NormalizeDescription() }
 
         let measuredPeakDB = 20.0 * log10(Double(peak.amplitude))
