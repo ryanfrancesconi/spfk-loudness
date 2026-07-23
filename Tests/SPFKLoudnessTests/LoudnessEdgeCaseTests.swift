@@ -9,7 +9,7 @@ import Testing
 
 // MARK: - Error Handling
 
-@Suite(.serialized, .tags(.file))
+@Suite(.tags(.file))
 final class LoudnessErrorTests: BinTestCase {
     /// As this test is writing an actual file, Make Suite serialized
     @Test("non-audio file produces invalid result or throws")
