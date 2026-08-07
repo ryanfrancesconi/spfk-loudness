@@ -62,21 +62,6 @@ average.loudnessIntegrated  // arithmetic mean of integrated values
 | Max Momentary | `maxMomentaryLoudness` | LUFS | Highest 400 ms loudness window |
 | Max Short-Term | `maxShortTermLoudness` | LUFS | Highest 3 s loudness window |
 
-## Architecture
-
-```
-SPFKLoudness (Swift)
-  ├── LoudnessAnalyzer.swift            — Public API: analyze(url:minimumDuration:)
-  ├── LoudnessDescription+Init.swift    — Convenience async init with validation
-  └── Internal/
-      ├── CallbackContext.swift          — Mutable state for the AudioConverter callback
-      └── AudioConverterCallback.swift   — @convention(c) callback: reads audio, feeds ebur128
-
-SPFKLoudnessC (C)
-  └── r128x/
-      └── ebur128.c                     — libebur128 (EBU R128 / ITU BS.1770-4)
-```
-
 ### Processing Pipeline
 
 1. **File decoding** — `ExtAudioFile` opens the file and delivers 32-bit float interleaved PCM
