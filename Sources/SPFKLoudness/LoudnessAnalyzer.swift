@@ -31,11 +31,19 @@ public enum LoudnessAnalyzer {
     ///   - minimumDuration: The minimum number of seconds of audio to feed to
     ///     libebur128. Files shorter than this are looped to reach the target.
     ///     Pass `nil` (the default) to disable looping.
+    ///   - isCancelled: Polled during the decode loop; returning `true` throws
+    ///     `CancellationError`. The default reads the calling task, which is what a caller
+    ///     inside a `Task` wants; pass a closure to drive it deterministically from a test.
     /// - Returns: A ``LoudnessDescription`` containing integrated loudness, loudness range,
     ///   max true peak, max momentary loudness, and max short-term loudness.
-    /// - Throws: An `NSError` with `NSOSStatusErrorDomain` if the file cannot be
-    ///   opened, its format cannot be read, or the audio converter fails.
-    public static func analyze(url: URL, minimumDuration: TimeInterval? = nil) throws -> LoudnessDescription {
+    /// - Throws: `CancellationError` when `isCancelled` fires, or an `NSError` with
+    ///   `NSOSStatusErrorDomain` if the file cannot be opened, its format cannot be read,
+    ///   or the audio converter fails.
+    public static func analyze(
+        url: URL,
+        minimumDuration: TimeInterval? = nil,
+        isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+    ) throws -> LoudnessDescription {
         let audioFileRef = try openAudioFile(url: url)
         defer { ExtAudioFileDispose(audioFileRef) }
 
@@ -73,7 +81,8 @@ public enum LoudnessAnalyzer {
             context: &context,
             converterOutASBD: converter.outputASBD,
             converterOutBuffer: converter.outputBuffer,
-            framesPerIteration: converter.outputFrameCount
+            framesPerIteration: converter.outputFrameCount,
+            isCancelled: isCancelled
         )
 
         return extractResults(state: state, context: context, maxTruePeak: maxTruePeak)
@@ -245,13 +254,18 @@ extension LoudnessAnalyzer {
 
     /// Drives the `AudioConverter`, feeding decoded audio through the callback and tracking true peak.
     ///
+    /// `isCancelled` is polled per iteration rather than inside the callback: ``CallbackContext``
+    /// is handed to `AudioConverterFillComplexBuffer` as untyped memory and so cannot hold an
+    /// object reference. One iteration bounds the latency at the cost of `framesPerIteration`.
+    ///
     /// - Returns: The maximum true-peak sample magnitude (linear scale, pre-dBTP conversion).
     private static func processAudio(
         converterRef: AudioConverterRef,
         context: inout CallbackContext,
         converterOutASBD: AudioStreamBasicDescription,
         converterOutBuffer: UnsafeMutablePointer<UInt8>,
-        framesPerIteration: UInt32
+        framesPerIteration: UInt32,
+        isCancelled: @Sendable () -> Bool
     ) throws -> Float32 {
         var maxTruePeak: Float32 = 0
 
@@ -265,6 +279,8 @@ extension LoudnessAnalyzer {
         )
 
         repeat {
+            if isCancelled() { throw CancellationError() }
+
             var framesToRead = framesPerIteration
 
             converterOutBufferList.mBuffers.mDataByteSize = framesPerIteration * converterOutASBD.mBytesPerFrame
@@ -287,7 +303,6 @@ extension LoudnessAnalyzer {
                 let samples = converterOutBufferList.mBuffers.mData!
                     .assumingMemoryBound(to: Float32.self)
                 let nChannels = converterOutBufferList.mBuffers.mNumberChannels
-                context.framesProduced += framesToRead
 
                 var blockMax: Float32 = 0
                 vDSP_maxmgv(samples, 1, &blockMax, vDSP_Length(framesToRead * nChannels))

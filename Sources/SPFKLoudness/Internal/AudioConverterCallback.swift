@@ -55,7 +55,7 @@ let audioConverterCallback: AudioConverterComplexInputDataProc = {
         if rereadErr != noErr { return rereadErr }
     }
 
-    context.pointee.fileFramesRead += framesInFileOutBuffer
+    context.pointee.fileFramesRead += Int64(framesInFileOutBuffer)
 
     var framesInBuffer = framesInFileOutBuffer
     var pushedFrames: UInt32 = 0

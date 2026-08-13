@@ -13,7 +13,9 @@ extension LoudnessDescription {
     /// which clears any metrics that fall outside the representable range (±99.99).
     ///
     /// - Parameter url: A file URL for any audio format supported by Core Audio.
-    /// - Throws: If the file cannot be opened or decoded.
+    /// - Throws: If the file cannot be opened or decoded, or `CancellationError` when the calling
+    ///   task is cancelled. The decode is synchronous, so cancellation is observed by polling
+    ///   rather than at a suspension point — this `init` awaits nothing.
     public init(parsing url: URL) async throws {
         self = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5).validated()
     }

@@ -17,9 +17,7 @@ struct CallbackContext {
     /// The libebur128 analysis state.
     var state: UnsafeMutablePointer<ebur128_state>
     /// Total frames consumed from the file so far.
-    var fileFramesRead: UInt32 = 0
-    /// Total oversampled frames produced by the converter so far.
-    var framesProduced: UInt32 = 0
+    var fileFramesRead: Int64 = 0
     /// Frames remaining before the next 100 ms ebur128 measurement boundary.
     var neededFrames: UInt32
     /// Number of frames in a 100 ms interval at the file's sample rate.
