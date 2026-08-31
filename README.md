@@ -8,49 +8,16 @@ A Swift package for measuring audio loudness according to the [EBU R128](https:/
 
 Provides integrated loudness (LUFS), loudness range (LU), true peak (dBTP), and momentary/short-term loudness values for any audio format supported by Core Audio.
 
-## Usage
+## Measuring
 
-### Analyzing a single file
+`LoudnessAnalyzer.analyze(url:)` returns the five EBU R128 values for a file.
+`LoudnessDescription(parsing:)` wraps it with a default 5-second minimum duration and validates the
+result, and a collection of descriptions has an `average`.
 
-```swift
-import SPFKLoudness
+Files shorter than 2.5 seconds do not provide enough material for a stable integrated measurement.
+Passing a `minimumDuration` loops the audio in memory until the target length is reached.
 
-let result = try LoudnessAnalyzer.analyze(url: audioFileURL)
-
-result.loudnessIntegrated    // -24.13 (LUFS)
-result.loudnessRange         // 1.43 (LU)
-result.maxTruePeakLevel      // -0.07 (dBTP)
-result.maxMomentaryLoudness  // -19.51 (LUFS)
-result.maxShortTermLoudness  // -22.99 (LUFS)
-```
-
-### Handling short files
-
-Files shorter than 2.5 seconds don't provide enough material for a stable integrated loudness measurement. Pass `minimumDuration` to loop the audio in-memory until the target length is reached:
-
-```swift
-let result = try LoudnessAnalyzer.analyze(url: shortFileURL, minimumDuration: 5)
-```
-
-### Convenience initializer
-
-`LoudnessDescription(parsing:)` wraps the analyzer with a default 5-second minimum duration and validates the result:
-
-```swift
-let loudness = try await LoudnessDescription(parsing: audioFileURL)
-
-loudness.isValid      // true if at least one metric is non-nil
-loudness.stringValue  // "I -24.1 LUFS, TP -0.1 dB, LRA 1.4 LU, M -19.5 LU, S -23.0 LU"
-```
-
-### Averaging across files
-
-```swift
-let descriptions = try await files.asyncMap { try await LoudnessDescription(parsing: $0) }
-let average = descriptions.average
-
-average.loudnessIntegrated  // arithmetic mean of integrated values
-```
+`NormalizeAnalyzer` measures what gain a file needs to hit a target level.
 
 ## EBU R128 Metrics
 
