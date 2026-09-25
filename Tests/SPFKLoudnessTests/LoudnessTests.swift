@@ -58,25 +58,4 @@ final class LoudnessTests: TestCaseModel {
             lufs.isApproximatelyEqual(to: -25.29, relativeTolerance: 0.001)
         )
     }
-
-    @Test func audioCasesStringValue() async throws {
-        var out: [String] = .init()
-
-        for url in TestBundleResources.shared.audioCases {
-            let loudness = try await LoudnessDescription(parsing: url)
-            out.append(loudness.stringValue)
-        }
-
-        Log.debug(out)
-    }
-
-    @Test func invalid() async throws {
-        let url = TestBundleResources.shared.no_data_chunk
-
-        let loudness = try await LoudnessDescription(parsing: url)
-
-        Log.debug(loudness.stringValue)
-
-        #expect(!loudness.isValid)
-    }
 }

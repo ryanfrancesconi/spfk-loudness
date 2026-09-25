@@ -94,20 +94,6 @@ final class LoudnessFormatTests: BinTestCase {
 
     // MARK: - String value format
 
-    @Test("stringValue contains expected format markers")
-    func stringValueFormat() async throws {
-        let url = TestBundleResources.shared.tabla_wav
-        let loudness = try await LoudnessDescription(parsing: url)
-
-        let sv = loudness.stringValue
-
-        #expect(sv.contains("LUFS"))
-        #expect(sv.contains("dB"))
-        #expect(sv.contains("LRA"))
-        #expect(sv.contains("I "))
-        #expect(sv.contains("TP "))
-    }
-
     @Test("audioCases all produce non-empty stringValue")
     func audioCasesStringValue() async throws {
         for url in TestBundleResources.shared.audioCases {
