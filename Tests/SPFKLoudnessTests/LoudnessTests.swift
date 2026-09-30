@@ -32,8 +32,6 @@ final class LoudnessTests: TestCaseModel {
     }
 
     @Test func averageLoudness() async throws {
-        let targetLevel: Float64 = -23
-
         let urls = [
             TestBundleResources.shared.mp3_id3, TestBundleResources.shared.tabla_wav,
             TestBundleResources.shared.cowbell_wav,
@@ -45,14 +43,9 @@ final class LoudnessTests: TestCaseModel {
             guard let value = try? await LoudnessDescription(parsing: url) else { continue }
 
             values.append(value)
-
-            Log.debug("Change to target is", targetLevel - (value.loudnessIntegrated ?? 0))
         }
 
         let lufs = try #require(values.average.loudnessIntegrated)
-
-        Log.debug("🔊 values:", values)
-        Log.debug("🔊 average:", lufs)
 
         #expect(
             lufs.isApproximatelyEqual(to: -25.29, relativeTolerance: 0.001)
