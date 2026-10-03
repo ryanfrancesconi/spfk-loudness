@@ -7,11 +7,12 @@ import SPFKLoudnessC
 /// Mutable state shared between the ``AudioConverterComplexInputDataProc`` callback and
 /// the main processing loop. Passed as `inUserData` via `UnsafeMutablePointer`.
 ///
-/// The callback reads audio from ``reader``, feeds it to libebur128 in 100 ms
+/// The callback reads audio from ``handle``, feeds it to libebur128 in 100 ms
 /// chunks, and tracks the running-max momentary and short-term loudness values.
 struct CallbackContext {
-    /// The source being read, retained by the caller for the duration of the analysis.
-    var reader: Unmanaged<FrameReaderHandle>
+    /// The source being read and what is collected from it, retained by the caller for the
+    /// duration of the analysis.
+    var handle: Unmanaged<AnalysisHandle>
     /// Scratch buffer for decoded Float32 PCM frames (owned by the caller).
     var fileOutBuffer: UnsafeMutablePointer<Float32>
     /// The libebur128 analysis state.
@@ -22,6 +23,8 @@ struct CallbackContext {
     var neededFrames: UInt32
     /// Number of frames in a 100 ms interval at the file's sample rate.
     var reportIntervalFrames: UInt32
+    /// 100 ms intervals fed to libebur128 so far. From the fourth on, each completes a gating block.
+    var intervalsCompleted: Int = 0
     /// Total frame count of the source file.
     var fileLengthInFrames: Int64 = 0
     /// Total frames to process (equals ``fileLengthInFrames`` when not looping,

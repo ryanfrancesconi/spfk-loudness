@@ -47,13 +47,20 @@ public enum LoudnessAnalyzer {
         minimumDuration: TimeInterval? = nil,
         isCancelled: @Sendable () -> Bool = { Task.isCancelled }
     ) throws -> LoudnessDescription {
-        let audioFileRef = try openAudioFile(url: url)
-        defer { ExtAudioFileDispose(audioFileRef) }
+        try measure(url: url, minimumDuration: minimumDuration, isCancelled: isCancelled).description
+    }
 
-        let clientASBD = try configureClientFormat(for: audioFileRef)
-        let reader = try ExtAudioFileFrameReader(audioFileRef: audioFileRef, clientASBD: clientASBD)
+    /// ``analyze(url:minimumDuration:isCancelled:)`` with the gating blocks the integrated value
+    /// came from, for measuring a set of files together.
+    public static func measure(
+        url: URL,
+        minimumDuration: TimeInterval? = nil,
+        isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+    ) throws -> LoudnessMeasurement {
+        let reader = try ExtAudioFileFrameReader(url: url)
+        let clientASBD = reader.clientASBD
 
-        return try analyze(
+        return try measure(
             reader: reader,
             clientASBD: clientASBD,
             loops: loops(lengthInFrames: reader.lengthInFrames, sampleRate: clientASBD.mSampleRate, minimumDuration: minimumDuration),
@@ -63,13 +70,13 @@ public enum LoudnessAnalyzer {
     }
 
     /// Oversamples, measures and assembles the result for any ``FrameReader``.
-    static func analyze(
+    static func measure(
         reader: any FrameReader,
         clientASBD: AudioStreamBasicDescription,
         loops: Bool,
         minimumDuration: TimeInterval?,
         isCancelled: @Sendable () -> Bool
-    ) throws -> LoudnessDescription {
+    ) throws -> LoudnessMeasurement {
         let overSamplingFactor: UInt32 = if clientASBD.mSampleRate <= 48000 {
             4
         } else if clientASBD.mSampleRate <= 96000 {
@@ -89,7 +96,7 @@ public enum LoudnessAnalyzer {
             ebur128_destroy(&mutableState)
         }
 
-        let handle = FrameReaderHandle(reader: reader)
+        let handle = AnalysisHandle(reader: reader)
 
         var context = makeContext(
             handle: handle,
@@ -112,7 +119,10 @@ public enum LoudnessAnalyzer {
             )
         }
 
-        return extractResults(state: state, context: context, maxTruePeak: maxTruePeak)
+        return LoudnessMeasurement(
+            description: extractResults(state: state, context: context, maxTruePeak: maxTruePeak),
+            gatingBlocks: handle.gatingBlocks
+        )
     }
 
     /// Whether a source of `lengthInFrames` is short enough to be looped up to `minimumDuration`.
@@ -128,55 +138,6 @@ public enum LoudnessAnalyzer {
 // MARK: - Private Helpers
 
 extension LoudnessAnalyzer {
-    /// Opens an audio file for reading via Extended Audio File Services.
-    private static func openAudioFile(url: URL) throws -> ExtAudioFileRef {
-        var audioFileRef: ExtAudioFileRef?
-        let err = ExtAudioFileOpenURL(url as CFURL, &audioFileRef)
-
-        guard err == noErr, let audioFileRef else {
-            throw NSError(
-                domain: NSOSStatusErrorDomain, code: Int(err),
-                userInfo: [NSLocalizedDescriptionKey: "Failed to open '\(url.lastPathComponent)' (OSStatus \(err))"]
-            )
-        }
-        return audioFileRef
-    }
-
-    /// Reads the file's native format and sets the client format to Float32 interleaved PCM.
-    private static func configureClientFormat(for audioFileRef: ExtAudioFileRef) throws -> AudioStreamBasicDescription {
-        var inFileASBD = AudioStreamBasicDescription()
-        var propSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-
-        var err = ExtAudioFileGetProperty(
-            audioFileRef,
-            kExtAudioFileProperty_FileDataFormat,
-            &propSize,
-            &inFileASBD
-        )
-        guard err == noErr else { throw osStatusError(err) }
-
-        var clientASBD = AudioStreamBasicDescription()
-        clientASBD.mChannelsPerFrame = inFileASBD.mChannelsPerFrame
-        clientASBD.mSampleRate = inFileASBD.mSampleRate
-        clientASBD.mFormatID = kAudioFormatLinearPCM
-        clientASBD.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked
-        clientASBD.mBitsPerChannel = 32
-        clientASBD.mFramesPerPacket = 1
-        clientASBD.mBytesPerFrame = 4 * clientASBD.mChannelsPerFrame
-        clientASBD.mBytesPerPacket = clientASBD.mBytesPerFrame
-        propSize = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
-
-        err = ExtAudioFileSetProperty(
-            audioFileRef,
-            kExtAudioFileProperty_ClientDataFormat,
-            propSize,
-            &clientASBD
-        )
-        guard err == noErr else { throw osStatusError(err) }
-
-        return clientASBD
-    }
-
     /// Bundles the AudioConverter and its associated buffers.
     private struct ConverterResources {
         let ref: AudioConverterRef
@@ -249,17 +210,18 @@ extension LoudnessAnalyzer {
     ///
     /// A source of unknown length is read to its end.
     private static func makeContext(
-        handle: FrameReaderHandle,
+        handle: AnalysisHandle,
         fileOutBuffer: UnsafeMutablePointer<Float32>,
         state: UnsafeMutablePointer<ebur128_state>,
         clientASBD: AudioStreamBasicDescription,
         loops: Bool,
         minimumDuration: TimeInterval?
     ) -> CallbackContext {
-        let reportIntervalFrames = UInt32(clientASBD.mSampleRate / 10)
+        // libebur128's own rounding of 100 ms, so each interval ends on one of its block boundaries.
+        let reportIntervalFrames = (UInt32(clientASBD.mSampleRate) + 5) / 10
 
         var context = CallbackContext(
-            reader: Unmanaged.passUnretained(handle),
+            handle: Unmanaged.passUnretained(handle),
             fileOutBuffer: fileOutBuffer,
             state: state,
             neededFrames: reportIntervalFrames,
@@ -291,7 +253,7 @@ extension LoudnessAnalyzer {
     private static func processAudio(
         converterRef: AudioConverterRef,
         context: inout CallbackContext,
-        handle: FrameReaderHandle,
+        handle: AnalysisHandle,
         converterOutASBD: AudioStreamBasicDescription,
         converterOutBuffer: UnsafeMutablePointer<UInt8>,
         framesPerIteration: UInt32,

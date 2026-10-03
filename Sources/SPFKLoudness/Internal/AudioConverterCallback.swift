@@ -19,7 +19,7 @@ let audioConverterCallback: AudioConverterComplexInputDataProc = {
 
     let converterInASBD = context.pointee.converterInASBD
     let fileOutBuffer = context.pointee.fileOutBuffer
-    let handle = context.pointee.reader.takeUnretainedValue()
+    let handle = context.pointee.handle.takeUnretainedValue()
     var framesInFileOutBuffer: UInt32
 
     do {
@@ -53,6 +53,18 @@ let audioConverterCallback: AudioConverterComplexInputDataProc = {
 
         var momentaryValue: Float64 = 0
         ebur128_loudness_momentary(context.pointee.state, &momentaryValue)
+
+        // The momentary window is the gating block libebur128 has just computed, over the same
+        // 400 ms, so it is kept on the same absolute gate.
+        context.pointee.intervalsCompleted += 1
+
+        if context.pointee.intervalsCompleted >= 4, momentaryValue.isFinite {
+            let energy = LoudnessGatingBlocks.energy(loudness: momentaryValue)
+
+            if energy >= LoudnessGatingBlocks.absoluteGate {
+                handle.gatingBlocks.energies.append(energy)
+            }
+        }
 
         if !momentaryValue.isInfinite, momentaryValue <= 0 {
             if !context.pointee.hasMomentary || momentaryValue > context.pointee.maxMomentary {

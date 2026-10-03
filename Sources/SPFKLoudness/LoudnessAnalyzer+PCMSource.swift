@@ -18,6 +18,16 @@ extension LoudnessAnalyzer {
         minimumDuration: TimeInterval? = nil,
         isCancelled: @Sendable () -> Bool = { Task.isCancelled }
     ) throws -> LoudnessDescription {
+        try measure(pcmSource: pcmSource, minimumDuration: minimumDuration, isCancelled: isCancelled).description
+    }
+
+    /// ``analyze(pcmSource:minimumDuration:isCancelled:)`` with the gating blocks the integrated
+    /// value came from.
+    public static func measure(
+        pcmSource: some SequentialPCMSource,
+        minimumDuration: TimeInterval? = nil,
+        isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+    ) throws -> LoudnessMeasurement {
         let format = pcmSource.processingFormat
 
         var clientASBD = AudioStreamBasicDescription()
@@ -38,7 +48,7 @@ extension LoudnessAnalyzer {
 
         let reader = try PCMSourceFrameReader(source: pcmSource, retainsFramesForLooping: loops)
 
-        return try analyze(
+        return try measure(
             reader: reader,
             clientASBD: clientASBD,
             loops: loops,
