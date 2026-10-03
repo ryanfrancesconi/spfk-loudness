@@ -22,12 +22,15 @@ public enum LoudnessAnalyzer {
     /// Analyzes the audio file at `url` and returns its EBU R128 loudness metrics.
     ///
     /// When `minimumDuration` is greater than zero and the file is shorter than half
-    /// that, the audio is looped in-memory (via `ExtAudioFileSeek`) so that
-    /// libebur128 has enough material for a stable integrated loudness measurement.
+    /// that, the audio is looped so that libebur128 has enough material for a stable
+    /// integrated loudness measurement.
+    ///
+    /// Reads the file's first audio track. Containers `ExtAudioFile` cannot open (Ogg, Matroska,
+    /// MXF) and other tracks go through ``analyze(pcmSource:minimumDuration:isCancelled:)``.
     ///
     /// - Parameters:
-    ///   - url: A file URL pointing to any format readable by Core Audio
-    ///     (WAV, AIFF, CAF, MP3, AAC, OGG, FLAC, etc.).
+    ///   - url: A file URL pointing to any format readable by `ExtAudioFile`
+    ///     (WAV, AIFF, CAF, MP3, AAC, FLAC, etc.).
     ///   - minimumDuration: The minimum number of seconds of audio to feed to
     ///     libebur128. Files shorter than half this are looped to reach it.
     ///     Pass `nil` (the default) to disable looping.
@@ -48,7 +51,25 @@ public enum LoudnessAnalyzer {
         defer { ExtAudioFileDispose(audioFileRef) }
 
         let clientASBD = try configureClientFormat(for: audioFileRef)
+        let reader = try ExtAudioFileFrameReader(audioFileRef: audioFileRef, clientASBD: clientASBD)
 
+        return try analyze(
+            reader: reader,
+            clientASBD: clientASBD,
+            loops: loops(lengthInFrames: reader.lengthInFrames, sampleRate: clientASBD.mSampleRate, minimumDuration: minimumDuration),
+            minimumDuration: minimumDuration,
+            isCancelled: isCancelled
+        )
+    }
+
+    /// Oversamples, measures and assembles the result for any ``FrameReader``.
+    static func analyze(
+        reader: any FrameReader,
+        clientASBD: AudioStreamBasicDescription,
+        loops: Bool,
+        minimumDuration: TimeInterval?,
+        isCancelled: @Sendable () -> Bool
+    ) throws -> LoudnessDescription {
         let overSamplingFactor: UInt32 = if clientASBD.mSampleRate <= 48000 {
             4
         } else if clientASBD.mSampleRate <= 96000 {
@@ -68,24 +89,39 @@ public enum LoudnessAnalyzer {
             ebur128_destroy(&mutableState)
         }
 
-        var context = try makeContext(
-            audioFileRef: audioFileRef,
+        let handle = FrameReaderHandle(reader: reader)
+
+        var context = makeContext(
+            handle: handle,
             fileOutBuffer: converter.inputBuffer,
             state: state,
             clientASBD: clientASBD,
+            loops: loops,
             minimumDuration: minimumDuration
         )
 
-        let maxTruePeak = try processAudio(
-            converterRef: converter.ref,
-            context: &context,
-            converterOutASBD: converter.outputASBD,
-            converterOutBuffer: converter.outputBuffer,
-            framesPerIteration: converter.outputFrameCount,
-            isCancelled: isCancelled
-        )
+        let maxTruePeak = try withExtendedLifetime(handle) {
+            try processAudio(
+                converterRef: converter.ref,
+                context: &context,
+                handle: handle,
+                converterOutASBD: converter.outputASBD,
+                converterOutBuffer: converter.outputBuffer,
+                framesPerIteration: converter.outputFrameCount,
+                isCancelled: isCancelled
+            )
+        }
 
         return extractResults(state: state, context: context, maxTruePeak: maxTruePeak)
+    }
+
+    /// Whether a source of `lengthInFrames` is short enough to be looped up to `minimumDuration`.
+    static func loops(lengthInFrames: Int64, sampleRate: Float64, minimumDuration: TimeInterval?) -> Bool {
+        let fileDuration = Double(lengthInFrames) / sampleRate
+
+        guard let minimumDuration, minimumDuration > 0, fileDuration > 0 else { return false }
+
+        return fileDuration * 2 < minimumDuration
     }
 }
 
@@ -209,18 +245,21 @@ extension LoudnessAnalyzer {
         return state
     }
 
-    /// Builds a ``CallbackContext``, including the file length query and target frame calculation for looping.
+    /// Builds a ``CallbackContext``, including the target frame calculation for looping.
+    ///
+    /// A source of unknown length is read to its end.
     private static func makeContext(
-        audioFileRef: ExtAudioFileRef,
+        handle: FrameReaderHandle,
         fileOutBuffer: UnsafeMutablePointer<Float32>,
         state: UnsafeMutablePointer<ebur128_state>,
         clientASBD: AudioStreamBasicDescription,
+        loops: Bool,
         minimumDuration: TimeInterval?
-    ) throws -> CallbackContext {
+    ) -> CallbackContext {
         let reportIntervalFrames = UInt32(clientASBD.mSampleRate / 10)
 
         var context = CallbackContext(
-            audioFileRef: audioFileRef,
+            reader: Unmanaged.passUnretained(handle),
             fileOutBuffer: fileOutBuffer,
             state: state,
             neededFrames: reportIntervalFrames,
@@ -228,25 +267,15 @@ extension LoudnessAnalyzer {
             converterInASBD: clientASBD
         )
 
-        var size = UInt32(MemoryLayout<Int64>.size)
-        let err = ExtAudioFileGetProperty(
-            audioFileRef,
-            kExtAudioFileProperty_FileLengthFrames,
-            &size,
-            &context.fileLengthInFrames
-        )
-        guard err == noErr else { throw osStatusError(err) }
+        context.fileLengthInFrames = handle.reader.lengthInFrames
+        context.loops = loops
 
-        let fileDuration = Double(context.fileLengthInFrames) / clientASBD.mSampleRate
-
-        if let minimumDuration,
-           minimumDuration > 0,
-           fileDuration > 0,
-           fileDuration * 2 < minimumDuration
-        {
+        if loops, let minimumDuration {
             context.targetFrames = Int64(minimumDuration * clientASBD.mSampleRate)
-        } else {
+        } else if context.fileLengthInFrames > 0 {
             context.targetFrames = context.fileLengthInFrames
+        } else {
+            context.targetFrames = .max
         }
 
         return context
@@ -262,6 +291,7 @@ extension LoudnessAnalyzer {
     private static func processAudio(
         converterRef: AudioConverterRef,
         context: inout CallbackContext,
+        handle: FrameReaderHandle,
         converterOutASBD: AudioStreamBasicDescription,
         converterOutBuffer: UnsafeMutablePointer<UInt8>,
         framesPerIteration: UInt32,
@@ -294,6 +324,10 @@ extension LoudnessAnalyzer {
                 &converterOutBufferList,
                 nil
             )
+
+            if let error = handle.error {
+                throw error
+            }
 
             if err != noErr, err != kAudioConverterErr_InvalidInputSize {
                 throw osStatusError(err)

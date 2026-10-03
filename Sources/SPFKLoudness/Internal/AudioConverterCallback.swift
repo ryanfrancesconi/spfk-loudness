@@ -5,7 +5,7 @@ import Foundation
 import SPFKLoudnessC
 
 /// `AudioConverterComplexInputDataProc` that supplies decoded PCM frames to the
-/// sample-rate converter. On each invocation it reads a chunk from the source file,
+/// sample-rate converter. On each invocation it reads a chunk from the source,
 /// feeds the frames to libebur128 in 100 ms segments, and updates the running-max
 /// momentary/short-term loudness in ``CallbackContext``.
 let audioConverterCallback: AudioConverterComplexInputDataProc = {
@@ -18,41 +18,23 @@ let audioConverterCallback: AudioConverterComplexInputDataProc = {
     let context = inUserData.assumingMemoryBound(to: CallbackContext.self)
 
     let converterInASBD = context.pointee.converterInASBD
-    var framesInFileOutBuffer = ioNumberDataPackets.pointee
     let fileOutBuffer = context.pointee.fileOutBuffer
+    let handle = context.pointee.reader.takeUnretainedValue()
+    var framesInFileOutBuffer: UInt32
 
-    var fileOutBufferList = AudioBufferList(
-        mNumberBuffers: 1,
-        mBuffers: AudioBuffer(
-            mNumberChannels: converterInASBD.mChannelsPerFrame,
-            mDataByteSize: framesInFileOutBuffer * converterInASBD.mBytesPerFrame,
-            mData: fileOutBuffer
-        )
-    )
+    do {
+        framesInFileOutBuffer = try handle.reader.read(into: fileOutBuffer, frameCount: ioNumberDataPackets.pointee)
 
-    let err = ExtAudioFileRead(
-        context.pointee.audioFileRef,
-        &framesInFileOutBuffer,
-        &fileOutBufferList
-    )
-
-    if err != noErr { return err }
-
-    // Handle looping: if we hit EOF but haven't reached the target, seek back
-    if framesInFileOutBuffer == 0, context.pointee.fileFramesRead < context.pointee.targetFrames {
-        let seekErr = ExtAudioFileSeek(context.pointee.audioFileRef, 0)
-        if seekErr != noErr { return seekErr }
-
-        framesInFileOutBuffer = ioNumberDataPackets.pointee
-        fileOutBufferList.mBuffers.mDataByteSize = framesInFileOutBuffer * converterInASBD.mBytesPerFrame
-        fileOutBufferList.mBuffers.mData = UnsafeMutableRawPointer(fileOutBuffer)
-
-        let rereadErr = ExtAudioFileRead(
-            context.pointee.audioFileRef,
-            &framesInFileOutBuffer,
-            &fileOutBufferList
-        )
-        if rereadErr != noErr { return rereadErr }
+        // Handle looping: if we hit EOF but haven't reached the target, rewind
+        if framesInFileOutBuffer == 0, context.pointee.loops,
+           context.pointee.fileFramesRead < context.pointee.targetFrames
+        {
+            try handle.reader.rewind()
+            framesInFileOutBuffer = try handle.reader.read(into: fileOutBuffer, frameCount: ioNumberDataPackets.pointee)
+        }
+    } catch {
+        handle.error = error
+        return OSStatus(kAudioConverterErr_UnspecifiedError)
     }
 
     context.pointee.fileFramesRead += Int64(framesInFileOutBuffer)

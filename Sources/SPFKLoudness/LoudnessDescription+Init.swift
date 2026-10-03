@@ -2,6 +2,7 @@
 
 import Foundation
 import SPFKAudioBase
+import SPFKBase
 
 extension LoudnessDescription {
     /// Analyzes the audio file at `url` and populates all five EBU R128 loudness metrics.
@@ -18,5 +19,11 @@ extension LoudnessDescription {
     ///   rather than at a suspension point — this `init` awaits nothing.
     public init(parsing url: URL) async throws {
         self = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5).validated()
+    }
+
+    /// Analyzes decoded PCM — another audio track, or a container `ExtAudioFile` cannot open —
+    /// with the same looping as the URL initializer. Blocks for the length of the decode.
+    public init(parsing pcmSource: some SequentialPCMSource) throws {
+        self = try LoudnessAnalyzer.analyze(pcmSource: pcmSource, minimumDuration: 5).validated()
     }
 }
