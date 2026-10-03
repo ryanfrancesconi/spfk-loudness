@@ -6,7 +6,7 @@ import SPFKAudioBase
 extension LoudnessDescription {
     /// Analyzes the audio file at `url` and populates all five EBU R128 loudness metrics.
     ///
-    /// Very short files (under 5 seconds) are looped in-memory so that libebur128 has
+    /// Very short files (under 2.5 seconds) are looped in-memory so that libebur128 has
     /// enough material for a stable integrated loudness measurement.
     ///
     /// The raw measurement values are passed through ``validated()`` before assignment,

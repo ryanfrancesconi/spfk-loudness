@@ -21,15 +21,15 @@ public enum LoudnessAnalyzer {
 
     /// Analyzes the audio file at `url` and returns its EBU R128 loudness metrics.
     ///
-    /// When `minimumDuration` is greater than zero and the file is shorter than that
-    /// threshold, the audio is looped in-memory (via `ExtAudioFileSeek`) so that
+    /// When `minimumDuration` is greater than zero and the file is shorter than half
+    /// that, the audio is looped in-memory (via `ExtAudioFileSeek`) so that
     /// libebur128 has enough material for a stable integrated loudness measurement.
     ///
     /// - Parameters:
     ///   - url: A file URL pointing to any format readable by Core Audio
     ///     (WAV, AIFF, CAF, MP3, AAC, OGG, FLAC, etc.).
     ///   - minimumDuration: The minimum number of seconds of audio to feed to
-    ///     libebur128. Files shorter than this are looped to reach the target.
+    ///     libebur128. Files shorter than half this are looped to reach it.
     ///     Pass `nil` (the default) to disable looping.
     ///   - isCancelled: Polled during the decode loop; returning `true` throws
     ///     `CancellationError`. The default reads the calling task, which is what a caller

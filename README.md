@@ -15,7 +15,7 @@ Provides integrated loudness (LUFS), loudness range (LU), true peak (dBTP), and 
 result, and a collection of descriptions has an `average`.
 
 Files shorter than 2.5 seconds do not provide enough material for a stable integrated measurement.
-Passing a `minimumDuration` loops the audio in memory until the target length is reached.
+Passing a `minimumDuration` loops a file shorter than half of it in memory until that length is reached.
 
 `NormalizeAnalyzer` measures what gain a file needs to hit a target level.
 
