@@ -8,6 +8,9 @@ protocol FrameReader: AnyObject {
     /// Frames in the source, or 0 when it cannot be known before reading.
     var lengthInFrames: Int64 { get }
 
+    /// The label of each channel, in order, or `nil` when the source declares no layout.
+    var channelLabels: [AudioChannelLabel]? { get }
+
     /// Reads up to `frameCount` frames into `buffer` and returns how many were written; 0 at the end.
     func read(into buffer: UnsafeMutablePointer<Float32>, frameCount: UInt32) throws -> UInt32
 

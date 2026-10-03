@@ -18,6 +18,7 @@ final class PCMSourceFrameReader: FrameReader {
     private var replayPosition: Int?
 
     let lengthInFrames: Int64
+    let channelLabels: [AudioChannelLabel]?
 
     init(source: any SequentialPCMSource, retainsFramesForLooping: Bool) throws {
         let format = source.processingFormat
@@ -30,6 +31,7 @@ final class PCMSourceFrameReader: FrameReader {
         channelCount = Int(format.channelCount)
         retainsFrames = retainsFramesForLooping
         lengthInFrames = max(0, source.totalFrameCount)
+        channelLabels = format.channelLayout.flatMap { ChannelMap.labels(of: $0.layout) }
     }
 
     func read(into buffer: UnsafeMutablePointer<Float32>, frameCount: UInt32) throws -> UInt32 {

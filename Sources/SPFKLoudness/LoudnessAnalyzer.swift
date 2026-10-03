@@ -96,6 +96,14 @@ public enum LoudnessAnalyzer {
             ebur128_destroy(&mutableState)
         }
 
+        let channelMap = reader.channelLabels
+            .flatMap(ChannelMap.ebur128Channels(for:))
+            .flatMap { $0.count == Int(clientASBD.mChannelsPerFrame) ? $0 : nil }
+
+        for (index, channel) in (channelMap ?? []).enumerated() {
+            ebur128_set_channel(state, UInt32(index), channel)
+        }
+
         let handle = AnalysisHandle(reader: reader)
 
         var context = makeContext(
@@ -121,7 +129,8 @@ public enum LoudnessAnalyzer {
 
         return LoudnessMeasurement(
             description: extractResults(state: state, context: context, maxTruePeak: maxTruePeak),
-            gatingBlocks: handle.gatingBlocks
+            gatingBlocks: handle.gatingBlocks,
+            usesDeclaredChannelLayout: channelMap != nil
         )
     }
 

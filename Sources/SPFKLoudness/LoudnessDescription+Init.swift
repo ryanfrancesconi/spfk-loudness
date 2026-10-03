@@ -32,12 +32,20 @@ extension LoudnessMeasurement {
     /// The URL initializer of `LoudnessDescription`, with the gating blocks kept.
     public init(parsing url: URL) async throws {
         let measurement = try LoudnessAnalyzer.measure(url: url, minimumDuration: 5)
-        self.init(description: measurement.description.validated(), gatingBlocks: measurement.gatingBlocks)
+        self.init(
+            description: measurement.description.validated(),
+            gatingBlocks: measurement.gatingBlocks,
+            usesDeclaredChannelLayout: measurement.usesDeclaredChannelLayout
+        )
     }
 
     /// The PCM-source counterpart. Blocks for the length of the decode.
     public init(parsing pcmSource: some SequentialPCMSource) throws {
         let measurement = try LoudnessAnalyzer.measure(pcmSource: pcmSource, minimumDuration: 5)
-        self.init(description: measurement.description.validated(), gatingBlocks: measurement.gatingBlocks)
+        self.init(
+            description: measurement.description.validated(),
+            gatingBlocks: measurement.gatingBlocks,
+            usesDeclaredChannelLayout: measurement.usesDeclaredChannelLayout
+        )
     }
 }

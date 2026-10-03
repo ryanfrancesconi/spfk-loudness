@@ -8,6 +8,7 @@ final class ExtAudioFileFrameReader: FrameReader {
     private let audioFileRef: ExtAudioFileRef
     let clientASBD: AudioStreamBasicDescription
     let lengthInFrames: Int64
+    let channelLabels: [AudioChannelLabel]?
 
     init(url: URL) throws {
         let audioFileRef = try Self.openAudioFile(url: url)
@@ -25,6 +26,7 @@ final class ExtAudioFileFrameReader: FrameReader {
         var size = UInt32(MemoryLayout<Int64>.size)
         let err = ExtAudioFileGetProperty(audioFileRef, kExtAudioFileProperty_FileLengthFrames, &size, &length)
         lengthInFrames = length
+        channelLabels = Self.fileChannelLabels(of: audioFileRef)
 
         guard err == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(err)) }
     }
@@ -105,5 +107,28 @@ extension ExtAudioFileFrameReader {
         guard err == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(err)) }
 
         return clientASBD
+    }
+
+    /// The file's declared channel layout, expanded to one label per channel.
+    fileprivate static func fileChannelLabels(of audioFileRef: ExtAudioFileRef) -> [AudioChannelLabel]? {
+        var size: UInt32 = 0
+
+        // A layout named by tag or bitmap carries no descriptions, so the property is only the
+        // header — shorter than `AudioChannelLayout`, which declares room for one.
+        guard ExtAudioFileGetPropertyInfo(audioFileRef, kExtAudioFileProperty_FileChannelLayout, &size, nil) == noErr,
+              let header = MemoryLayout<AudioChannelLayout>.offset(of: \.mChannelDescriptions),
+              size >= UInt32(header)
+        else { return nil }
+
+        let byteCount = max(Int(size), MemoryLayout<AudioChannelLayout>.size)
+        let raw = UnsafeMutableRawPointer.allocate(byteCount: byteCount, alignment: MemoryLayout<AudioChannelLayout>.alignment)
+        raw.initializeMemory(as: UInt8.self, repeating: 0, count: byteCount)
+        defer { raw.deallocate() }
+
+        guard ExtAudioFileGetProperty(audioFileRef, kExtAudioFileProperty_FileChannelLayout, &size, raw) == noErr else {
+            return nil
+        }
+
+        return ChannelMap.labels(of: raw.assumingMemoryBound(to: AudioChannelLayout.self))
     }
 }

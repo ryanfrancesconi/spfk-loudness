@@ -58,4 +58,8 @@ public struct LoudnessGatingBlocks: Sendable, Equatable {
 public struct LoudnessMeasurement: Sendable {
     public let description: LoudnessDescription
     public let gatingBlocks: LoudnessGatingBlocks
+
+    /// Whether channels were weighted by the layout the source declares. When `false`, libebur128
+    /// assumed one from the channel count, which is right only for WAV order.
+    public let usesDeclaredChannelLayout: Bool
 }
