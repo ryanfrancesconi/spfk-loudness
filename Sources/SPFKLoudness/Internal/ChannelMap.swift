@@ -46,16 +46,16 @@ enum ChannelMap {
         }
 
         if tag == kAudioChannelLayoutTag_UseChannelBitmap {
-            var bitmap = layout.pointee.mChannelBitmap
-            return expand(property: kAudioFormatProperty_ChannelLayoutForBitmap, specifier: &bitmap)
+            return expand(property: kAudioFormatProperty_ChannelLayoutForBitmap, specifier: layout.pointee.mChannelBitmap.rawValue)
         }
 
-        var specifier = tag
-        return expand(property: kAudioFormatProperty_ChannelLayoutForTag, specifier: &specifier)
+        return expand(property: kAudioFormatProperty_ChannelLayoutForTag, specifier: tag)
     }
 
-    private static func expand<T>(property: AudioFormatPropertyID, specifier: inout T) -> [AudioChannelLabel]? {
-        let specifierSize = UInt32(MemoryLayout<T>.size)
+    /// Both specifiers — a layout tag and a channel bitmap — are 32-bit values.
+    private static func expand(property: AudioFormatPropertyID, specifier: UInt32) -> [AudioChannelLabel]? {
+        var specifier = specifier
+        let specifierSize = UInt32(MemoryLayout<UInt32>.size)
         var size: UInt32 = 0
 
         guard AudioFormatGetPropertyInfo(property, specifierSize, &specifier, &size) == noErr, size > 0 else {
