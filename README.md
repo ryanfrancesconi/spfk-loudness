@@ -4,55 +4,69 @@
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fryanfrancesconi%2Fspfk-loudness%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/ryanfrancesconi/spfk-loudness)
 [![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fryanfrancesconi%2Fspfk-loudness%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/ryanfrancesconi/spfk-loudness)
 
-A Swift package for measuring audio loudness according to the [EBU R128](https://tech.ebu.ch/docs/r/r128.pdf) standard. Built on [libebur128](https://github.com/jiixyj/libebur128) with a pure Swift analysis layer using Core Audio for decoding and sample-rate conversion.
+Loudness measurement to the [EBU R128](https://tech.ebu.ch/docs/r/r128.pdf) standard for audio
+files: integrated loudness, loudness range, true peak, and the maximum momentary and short-term
+loudness.
 
-Provides integrated loudness (LUFS), loudness range (LU), true peak (dBTP), and momentary/short-term loudness values for any audio format supported by Core Audio.
+These are the numbers broadcast and streaming delivery specs are written in, and what a library app
+needs to show a file's level or match a set of files to one another. Measurement is the vendored
+[libebur128](https://github.com/jiixyj/libebur128) (MIT), driven from Swift with Core Audio decoding
+and oversampling, so any format Core Audio reads can be measured with no further dependencies.
+ShadowTag uses it for loudness analysis, album loudness and Normalize. It depends on neither product
+and can be adopted on its own.
 
-## Measuring
+## What it does
 
-`LoudnessAnalyzer.analyze(url:)` returns the five EBU R128 values for a file.
-`LoudnessDescription(parsing:)` wraps it with a default 5-second minimum duration and validates the
-result, and a collection of descriptions has an `average`.
+**Measuring a file.** `LoudnessDescription(parsing:)` decodes a file and returns all five values.
+Values outside the representable range come back `nil` rather than as a misleading number, and a
+very short file is looped in memory so the integrated measurement has enough material to be stable.
 
-Files shorter than 2.5 seconds do not provide enough material for a stable integrated measurement.
-Passing a `minimumDuration` loops a file shorter than half of it in memory until that length is reached.
+**Measuring decoded audio.** Containers Core Audio cannot open, and audio tracks other than the
+first, are measured from a `SequentialPCMSource` instead of a URL, so the decoder can come from
+wherever the container is understood.
 
-`NormalizeAnalyzer` measures what gain a file needs to hit a target level.
+**Measuring a set of files.** The integrated loudness of an album is not the average of its tracks:
+R128 gates the whole program together. `LoudnessAnalyzer.measure` keeps the gating blocks a result
+came from, and `LoudnessGatingBlocks` integrates the blocks of many files as one program.
 
-## EBU R128 Metrics
+**Normalizing.** `NormalizeAnalyzer` turns a target, either a loudness in LUFS or a peak level, into
+the linear gain a file needs, optionally limited by a true-peak ceiling and a maximum gain.
 
-| Metric | Property | Unit | Description |
-|--------|----------|------|-------------|
-| Integrated Loudness | `loudnessIntegrated` | LUFS | Program loudness over the entire file, with gating |
-| Loudness Range | `loudnessRange` | LU | Dynamic range per EBU Tech 3342 |
-| True Peak | `maxTruePeakLevel` | dBTP | Maximum inter-sample peak level |
-| Max Momentary | `maxMomentaryLoudness` | LUFS | Highest 400 ms loudness window |
-| Max Short-Term | `maxShortTermLoudness` | LUFS | Highest 3 s loudness window |
+**Channel weighting.** Channels are weighted by the layout the file declares. With no layout
+declared, WAV channel order is assumed.
 
-### Processing Pipeline
+## Usage
 
-1. **File decoding** — `ExtAudioFile` opens the file and delivers 32-bit float interleaved PCM
-2. **Oversampling** — `AudioConverter` upsamples for true peak detection (4x for ≤48 kHz, 2x for ≤96 kHz, 1x above)
-3. **Loudness measurement** — Decoded frames are fed to libebur128 in 100 ms chunks; momentary and short-term maxima are tracked per chunk
-4. **True peak detection** — Oversampled output is scanned with `vDSP_maxmgv` for vectorized max-magnitude detection
-5. **Looping** (optional) — If the file is shorter than half the `minimumDuration`, the callback seeks back to the start on EOF and continues feeding frames
-6. **Validation** — Results outside the representable range (±99.99) are set to nil
+```swift
+import SPFKAudioBase
+import SPFKLoudness
 
-## Supported Formats
+let loudness = try await LoudnessDescription(parsing: url)
+// loudness.loudnessIntegrated (LUFS), loudness.maxTruePeakLevel (dBTP), ...
+```
 
-Any audio format readable by Core Audio's `ExtAudioFile`, including WAV, AIF, FLAC, M4A, MP4, MP3, AAC, CAF, and OGG.
+Measure an album as one program:
 
-## Dependencies
+```swift
+let tracks = try urls.map { try LoudnessAnalyzer.measure(url: $0, minimumDuration: 5) }
+let albumLUFS = LoudnessGatingBlocks.integratedLoudness(of: tracks.map(\.gatingBlocks))
+```
 
-| Package | Purpose |
-|---------|---------|
-| [spfk-audio-base](https://github.com/ryanfrancesconi/spfk-audio-base) | `LoudnessDescription` type |
-| [spfk-testing](https://github.com/ryanfrancesconi/spfk-testing) | Test audio resources (test target only) |
+Find the gain that brings a file to a target:
 
-## Requirements
+```swift
+let normalize = try await NormalizeAnalyzer.analyze(url: url, options: NormalizeOptions(mode: .lufs))
+// normalize.gain is a linear multiplier
+```
 
-- **Platforms:** macOS 13+, iOS 16+
-- **Swift:** 6.2+
+## Things to know
+
+- Decoding is synchronous. The `async` entry points await nothing, so call them from a task off the
+  main actor. Cancelling that task stops the decode.
+- `NormalizeAnalyzer` returns unity gain when a file cannot be measured, rather than throwing. Only
+  cancellation throws.
+- `LoudnessDescription` itself is declared in spfk-audio-base, so code that only stores or displays
+  loudness does not need this package.
 
 ## About
 
