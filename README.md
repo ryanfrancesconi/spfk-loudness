@@ -63,8 +63,8 @@ let normalize = try await NormalizeAnalyzer.analyze(url: url, options: Normalize
 
 - Decoding is synchronous. The `async` entry points await nothing, so call them from a task off the
   main actor. Cancelling that task stops the decode.
-- `NormalizeAnalyzer` returns unity gain when a file cannot be measured, rather than throwing. Only
-  cancellation throws.
+- `NormalizeAnalyzer` throws when a file cannot be read, so a batch can report that file instead of
+  storing unity gain for it. A silent file is not an error: it returns unity gain.
 - `LoudnessDescription` itself is declared in spfk-audio-base, so code that only stores or displays
   loudness does not need this package.
 

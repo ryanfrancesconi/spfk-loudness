@@ -79,9 +79,10 @@ final class NormalizeAnalyzerTests: TestCaseModel {
 
     // MARK: - Error handling
 
-    @Test func invalidUrl_returnsUnityGain() async throws {
+    @Test func anUnreadableFileThrowsRatherThanMeasuringUnity() async {
         let url = URL(fileURLWithPath: "/nonexistent/audio.wav")
-        let desc = try await NormalizeAnalyzer.analyze(url: url, options: NormalizeOptions())
-        #expect(desc.isEmpty)
+        await #expect(throws: (any Error).self) {
+            try await NormalizeAnalyzer.analyze(url: url, options: NormalizeOptions())
+        }
     }
 }

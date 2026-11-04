@@ -12,23 +12,14 @@ public enum NormalizeAnalyzer {
     /// Analyzes the audio file at `url` and returns a ``NormalizeDescription``
     /// whose `gain` is ready to store on `AudioEditDescription.normalize`.
     ///
-    /// Analysis errors are caught internally and a unity-gain `NormalizeDescription` is
-    /// returned. `CancellationError` is the one exception and propagates — a cancelled run
-    /// must not be mistaken for a measurement of 0 dB.
+    /// Throws when the file cannot be read, so a batch can report the file rather than store
+    /// unity gain for it as though it had been measured.
     public static func analyze(url: URL, options: NormalizeOptions) async throws -> NormalizeDescription {
-        do {
-            switch options.mode {
-            case .lufs:
-                return try await analyzeLUFS(url: url, options: options)
-            case .peak:
-                return try await analyzePeak(url: url, options: options)
-            }
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // Return unity gain so the failure is silent at the call site —
-            // the caller decides whether to surface the error to the user.
-            return NormalizeDescription()
+        switch options.mode {
+        case .lufs:
+            try await analyzeLUFS(url: url, options: options)
+        case .peak:
+            try await analyzePeak(url: url, options: options)
         }
     }
 }

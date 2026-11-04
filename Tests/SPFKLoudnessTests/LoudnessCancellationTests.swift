@@ -41,12 +41,12 @@ final class LoudnessCancellationTests: TestCaseModel {
         #expect(result.isValid)
     }
 
-    @Test("NormalizeAnalyzer rethrows CancellationError but swallows an analysis error")
+    @Test("NormalizeAnalyzer throws CancellationError for a cancelled run, and another error for an unreadable file")
     func normalizeDistinguishesCancellation() async throws {
-        // A file Core Audio cannot open is an ordinary analysis failure: unity gain, no throw.
         let missing = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).wav")
-        let desc = try await NormalizeAnalyzer.analyze(url: missing, options: NormalizeOptions())
-        #expect(desc.isEmpty)
+        await #expect {
+            try await NormalizeAnalyzer.analyze(url: missing, options: NormalizeOptions())
+        } throws: { !($0 is CancellationError) }
 
         // A cancelled task must not be reported as a measurement of unity gain.
         let url = TestBundleResources.shared.tabla_wav
