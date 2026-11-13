@@ -8,7 +8,7 @@ import SPFKLoudnessC
 /// the channel count alone.
 enum ChannelMap {
     /// One libebur128 channel type per channel, or `nil` when any label has no BS.1770 weighting
-    /// here — ambisonics among them — and the channel-count default stands.
+    /// here - ambisonics among them - and the channel-count default stands.
     ///
     /// Rear surrounds are weighted as surrounds: WAV's 5.1 mask declares its surrounds as rear.
     static func ebur128Channels(for labels: [AudioChannelLabel]) -> [Int32]? {
@@ -52,7 +52,7 @@ enum ChannelMap {
         return expand(property: kAudioFormatProperty_ChannelLayoutForTag, specifier: tag)
     }
 
-    /// Both specifiers — a layout tag and a channel bitmap — are 32-bit values.
+    /// Both specifiers - a layout tag and a channel bitmap - are 32-bit values.
     private static func expand(property: AudioFormatPropertyID, specifier: UInt32) -> [AudioChannelLabel]? {
         var specifier = specifier
         let specifierSize = UInt32(MemoryLayout<UInt32>.size)

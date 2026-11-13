@@ -16,12 +16,12 @@ extension LoudnessDescription {
     /// - Parameter url: A file URL for any audio format supported by Core Audio.
     /// - Throws: If the file cannot be opened or decoded, or `CancellationError` when the calling
     ///   task is cancelled. The decode is synchronous, so cancellation is observed by polling
-    ///   rather than at a suspension point — this `init` awaits nothing.
+    ///   rather than at a suspension point - this `init` awaits nothing.
     public init(parsing url: URL) async throws {
         self = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5).validated()
     }
 
-    /// Analyzes decoded PCM — another audio track, or a container `ExtAudioFile` cannot open —
+    /// Analyzes decoded PCM - another audio track, or a container `ExtAudioFile` cannot open -
     /// with the same looping as the URL initializer. Blocks for the length of the decode.
     public init(parsing pcmSource: some SequentialPCMSource) throws {
         self = try LoudnessAnalyzer.analyze(pcmSource: pcmSource, minimumDuration: 5).validated()

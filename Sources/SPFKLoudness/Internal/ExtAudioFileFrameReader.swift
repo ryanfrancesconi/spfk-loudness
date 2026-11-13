@@ -114,7 +114,7 @@ extension ExtAudioFileFrameReader {
         var size: UInt32 = 0
 
         // A layout named by tag or bitmap carries no descriptions, so the property is only the
-        // header — shorter than `AudioChannelLayout`, which declares room for one.
+        // header - shorter than `AudioChannelLayout`, which declares room for one.
         guard ExtAudioFileGetPropertyInfo(audioFileRef, kExtAudioFileProperty_FileChannelLayout, &size, nil) == noErr,
               let header = MemoryLayout<AudioChannelLayout>.offset(of: \.mChannelDescriptions),
               size >= UInt32(header)

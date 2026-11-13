@@ -13,7 +13,7 @@ import SPFKLoudnessC
 /// oversampled (4x for ≤48 kHz, 2x for ≤96 kHz, 1x above) to enable ITU-R BS.1770-4
 /// true peak detection. True peak scanning uses `vDSP_maxmgv` for vectorized throughput.
 ///
-/// All resources are cleaned up via `defer` — the audio file, converter, ebur128 state,
+/// All resources are cleaned up via `defer` - the audio file, converter, ebur128 state,
 /// and scratch buffers are released regardless of how the function exits.
 public enum LoudnessAnalyzer {
     /// Default read buffer size in frames. Sized for one second at 192 kHz.
