@@ -22,9 +22,9 @@ extension LoudnessDescription {
     }
 
     /// Analyzes decoded PCM - another audio track, or a container `ExtAudioFile` cannot open -
-    /// with the same looping as the URL initializer. Blocks for the length of the decode.
-    public init(parsing pcmSource: some SequentialPCMSource) throws {
-        self = try LoudnessAnalyzer.analyze(pcmSource: pcmSource, minimumDuration: 5).validated()
+    /// with the same looping as the URL initializer.
+    public init(parsing pcmSource: some SequentialPCMSource) async throws {
+        self = try await LoudnessAnalyzer.analyze(pcmSource: pcmSource, minimumDuration: 5).validated()
     }
 }
 
@@ -39,9 +39,9 @@ extension LoudnessMeasurement {
         )
     }
 
-    /// The PCM-source counterpart. Blocks for the length of the decode.
-    public init(parsing pcmSource: some SequentialPCMSource) throws {
-        let measurement = try LoudnessAnalyzer.measure(pcmSource: pcmSource, minimumDuration: 5)
+    /// The PCM-source counterpart.
+    public init(parsing pcmSource: some SequentialPCMSource) async throws {
+        let measurement = try await LoudnessAnalyzer.measure(pcmSource: pcmSource, minimumDuration: 5)
         self.init(
             description: measurement.description.validated(),
             gatingBlocks: measurement.gatingBlocks,

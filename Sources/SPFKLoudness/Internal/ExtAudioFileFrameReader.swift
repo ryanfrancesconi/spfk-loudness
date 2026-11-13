@@ -5,6 +5,8 @@ import Foundation
 
 /// Reads a file's first audio track through `ExtAudioFile`, converted to interleaved Float32.
 final class ExtAudioFileFrameReader: FrameReader {
+    var isStarved: Bool { false }
+
     private let audioFileRef: ExtAudioFileRef
     let clientASBD: AudioStreamBasicDescription
     let lengthInFrames: Int64

@@ -49,34 +49,34 @@ struct LoudnessPCMSourceTests {
         #expect(lhs.maxShortTermLoudness == rhs.maxShortTermLoudness)
     }
 
-    @Test func matchesTheFileReadOfTheSameSamples() throws {
+    @Test func matchesTheFileReadOfTheSameSamples() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
         let viaFile = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5)
-        let viaSource = try LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
+        let viaSource = try await LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
 
         #expect(viaFile.loudnessIntegrated != nil)
         expectEqual(viaSource, viaFile)
     }
 
-    @Test func loopsAShortSourceAsTheFileReadDoes() throws {
+    @Test func loopsAShortSourceAsTheFileReadDoes() async throws {
         let url = TestBundleResources.shared.cowbell_wav
 
         let file = try AVAudioFile(forReading: url)
         #expect(LoudnessAnalyzer.loops(lengthInFrames: file.length, sampleRate: file.processingFormat.sampleRate, minimumDuration: 5))
 
         let viaFile = try LoudnessAnalyzer.analyze(url: url, minimumDuration: 5)
-        let viaSource = try LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
+        let viaSource = try await LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
 
         expectEqual(viaSource, viaFile)
     }
 
-    @Test func aSourceEndingShortOfItsDeclaredLengthIsNotReplayed() throws {
+    @Test func aSourceEndingShortOfItsDeclaredLengthIsNotReplayed() async throws {
         let url = TestBundleResources.shared.tabla_wav
         let length = try AVAudioFile(forReading: url).length
 
-        let honest = try LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
-        let overstated = try LoudnessAnalyzer.analyze(
+        let honest = try await LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url), minimumDuration: 5)
+        let overstated = try await LoudnessAnalyzer.analyze(
             pcmSource: AudioFilePCMSource(url: url, declaredFrameCount: length + 48000),
             minimumDuration: 5
         )
@@ -84,20 +84,20 @@ struct LoudnessPCMSourceTests {
         expectEqual(overstated, honest)
     }
 
-    @Test func aSourceOfUnknownLengthIsReadToItsEnd() throws {
+    @Test func aSourceOfUnknownLengthIsReadToItsEnd() async throws {
         let url = TestBundleResources.shared.tabla_wav
 
-        let known = try LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url))
-        let unknown = try LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url, declaredFrameCount: 0))
+        let known = try await LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url))
+        let unknown = try await LoudnessAnalyzer.analyze(pcmSource: AudioFilePCMSource(url: url, declaredFrameCount: 0))
 
         expectEqual(unknown, known)
     }
 
-    @Test func rethrowsTheSourcesError() throws {
+    @Test func rethrowsTheSourcesError() async throws {
         let source = try AudioFilePCMSource(url: TestBundleResources.shared.tabla_wav, failsAfterReads: 1)
 
-        #expect(throws: CocoaError.self) {
-            try LoudnessAnalyzer.analyze(pcmSource: source)
+        await #expect(throws: CocoaError.self) {
+            try await LoudnessAnalyzer.analyze(pcmSource: source)
         }
     }
 }

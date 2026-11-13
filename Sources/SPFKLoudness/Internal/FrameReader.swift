@@ -11,8 +11,13 @@ protocol FrameReader: AnyObject {
     /// The label of each channel, in order, or `nil` when the source declares no layout.
     var channelLabels: [AudioChannelLabel]? { get }
 
-    /// Reads up to `frameCount` frames into `buffer` and returns how many were written; 0 at the end.
+    /// Reads up to `frameCount` frames into `buffer` and returns how many were written; 0 at the end,
+    /// or when ``isStarved``.
     func read(into buffer: UnsafeMutablePointer<Float32>, frameCount: UInt32) throws -> UInt32
+
+    /// Whether a read returned 0 only because the reader must be refilled, which the converter's
+    /// callback cannot await.
+    var isStarved: Bool { get }
 
     /// Restarts reading from the first frame, for a short file that is looped.
     func rewind() throws

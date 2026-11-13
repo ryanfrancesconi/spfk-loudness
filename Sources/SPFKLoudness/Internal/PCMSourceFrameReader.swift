@@ -7,18 +7,30 @@ import SPFKBase
 
 /// Reads a ``SequentialPCMSource`` as interleaved Float32 frames.
 ///
-/// The source cannot seek, so a looped file is replayed from the frames kept on its first pass.
-/// Only a short file is looped, which is what bounds that copy.
+/// The source is awaited in ``refill()``; ``read(into:frameCount:)`` serves what that fetched, and
+/// reports ``isStarved`` once it is spent. The source cannot seek, so a looped file is replayed
+/// from the frames kept on its first pass. Only a short file is looped, which is what bounds that
+/// copy.
 final class PCMSourceFrameReader: FrameReader {
+    /// Frames asked of the source per refill.
+    static let refillFrames: UInt32 = 1 << 16
+
     private let source: any SequentialPCMSource
     private let channelCount: Int
     private let retainsFrames: Bool
     private var chunk: AVAudioPCMBuffer?
+    private var fetched: [Float32] = []
+    private var fetchedOffset = 0
+    private var reachedEnd = false
     private var retained: [Float32] = []
     private var replayPosition: Int?
 
     let lengthInFrames: Int64
     let channelLabels: [AudioChannelLabel]?
+
+    var isStarved: Bool {
+        replayPosition == nil && !reachedEnd && fetchedOffset >= fetched.count
+    }
 
     init(source: any SequentialPCMSource, retainsFramesForLooping: Bool) throws {
         let format = source.processingFormat
@@ -34,23 +46,45 @@ final class PCMSourceFrameReader: FrameReader {
         channelLabels = format.channelLayout.flatMap { ChannelMap.labels(of: $0.layout) }
     }
 
+    /// Fetches the source's next chunk, or marks its end.
+    func refill() async throws {
+        let chunk = try chunkBuffer(capacity: Self.refillFrames)
+        let frames = try await Int(source.readNextChunk(into: chunk, frameCount: Self.refillFrames))
+
+        guard frames > 0 else {
+            reachedEnd = true
+            return
+        }
+
+        fetched = [Float32](repeating: 0, count: frames * channelCount)
+        fetchedOffset = 0
+
+        try fetched.withUnsafeMutableBufferPointer { samples in
+            guard let base = samples.baseAddress else { return }
+            try interleave(chunk, frames: frames, into: base)
+        }
+
+        if retainsFrames {
+            retained.append(contentsOf: fetched)
+        }
+    }
+
     func read(into buffer: UnsafeMutablePointer<Float32>, frameCount: UInt32) throws -> UInt32 {
         if let replayPosition {
             return replay(into: buffer, frameCount: frameCount, from: replayPosition)
         }
 
-        let chunk = try chunkBuffer(capacity: frameCount)
-        let frames = try source.readNextChunk(into: chunk, frameCount: frameCount)
+        let samples = min(Int(frameCount) * channelCount, fetched.count - fetchedOffset)
 
-        guard frames > 0 else { return 0 }
+        guard samples > 0 else { return 0 }
 
-        try interleave(chunk, frames: Int(frames), into: buffer)
-
-        if retainsFrames {
-            retained.append(contentsOf: UnsafeBufferPointer(start: buffer, count: Int(frames) * channelCount))
+        fetched.withUnsafeBufferPointer {
+            guard let base = $0.baseAddress else { return }
+            buffer.update(from: base + fetchedOffset, count: samples)
         }
 
-        return frames
+        fetchedOffset += samples
+        return UInt32(samples / channelCount)
     }
 
     func rewind() throws {

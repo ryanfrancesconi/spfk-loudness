@@ -8,6 +8,10 @@ import SPFKLoudnessC
 /// sample-rate converter. On each invocation it reads a chunk from the source,
 /// feeds the frames to libebur128 in 100 ms segments, and updates the running-max
 /// momentary/short-term loudness in ``CallbackContext``.
+/// Returned with zero packets when the reader has to be refilled: the converter then hands back
+/// what it has produced and stays mid-stream, where zero packets with `noErr` would end it.
+let audioConverterStarvedStatus = OSStatus(0x7374_7276) // 'strv'
+
 let audioConverterCallback: AudioConverterComplexInputDataProc = {
     _,
         ioNumberDataPackets,
@@ -24,6 +28,11 @@ let audioConverterCallback: AudioConverterComplexInputDataProc = {
 
     do {
         framesInFileOutBuffer = try handle.reader.read(into: fileOutBuffer, frameCount: ioNumberDataPackets.pointee)
+
+        if framesInFileOutBuffer == 0, handle.reader.isStarved {
+            ioNumberDataPackets.pointee = 0
+            return audioConverterStarvedStatus
+        }
 
         // Handle looping: if we hit EOF but haven't reached the target, rewind
         if framesInFileOutBuffer == 0, context.pointee.loops,
